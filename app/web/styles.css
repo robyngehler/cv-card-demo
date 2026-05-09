@@ -88,6 +88,24 @@ h1 {
   text-transform: uppercase;
 }
 
+.header-status.ok {
+  color: #95f4d9;
+  border-color: rgba(110, 231, 210, 0.6);
+  background: rgba(14, 57, 49, 0.45);
+}
+
+.header-status.warn {
+  color: #ffd79c;
+  border-color: rgba(247, 190, 109, 0.6);
+  background: rgba(77, 54, 16, 0.4);
+}
+
+.header-status.error {
+  color: #ffc0b3;
+  border-color: rgba(255, 142, 122, 0.7);
+  background: rgba(87, 28, 20, 0.42);
+}
+
 .age-pill.stale {
   color: var(--danger);
   border-color: rgba(255, 142, 122, 0.55);
@@ -121,6 +139,12 @@ h1 {
 .btn.ghost {
   border: 1px solid var(--line);
   border-radius: 10px;
+}
+
+.diag-btn.active {
+  color: #04212a;
+  border-color: rgba(110, 231, 210, 0.7);
+  background: linear-gradient(130deg, rgba(110, 231, 210, 0.9), rgba(177, 244, 233, 0.95));
 }
 
 .btn {
@@ -223,6 +247,72 @@ h3 {
 .status-line {
   margin: 0.5rem 0 0.9rem;
   color: #cfdee8;
+}
+
+.session-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.meta-item,
+.question-progress {
+  border: 1px solid rgba(157, 184, 197, 0.18);
+  border-radius: 12px;
+  background: rgba(5, 11, 18, 0.42);
+}
+
+.meta-item {
+  padding: 0.55rem 0.6rem;
+  min-width: 0;
+}
+
+.meta-item span,
+.question-progress-head span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.meta-item strong,
+.question-progress-head strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.88rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.question-progress {
+  padding: 0.55rem 0.6rem 0.65rem;
+  margin-bottom: 0.8rem;
+}
+
+.question-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.question-progress-track {
+  margin-top: 0.45rem;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(157, 184, 197, 0.12);
+  border: 1px solid rgba(157, 184, 197, 0.15);
+}
+
+.question-progress-fill {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  transition: width 160ms linear;
 }
 
 .score-meter {
@@ -394,6 +484,10 @@ h3 {
   .app-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .session-meta {
+    grid-template-columns: 1fr;
   }
 
   .header-actions {

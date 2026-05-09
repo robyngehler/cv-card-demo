@@ -17,8 +17,6 @@ export function initLiveView(store) {
   const runAge = document.getElementById("run-frame-age");
   const configureAge = document.getElementById("configure-frame-age");
   let timer = null;
-  let runBlobUrl = "";
-  let configureBlobUrl = "";
   let currentMode = "RUN";
 
   async function fetchFrame(mode) {
@@ -27,29 +25,11 @@ export function initLiveView(store) {
       return;
     }
 
-    const response = await fetch(`/api/live-frame?mode=${mode === "CONFIGURE_CAMERA" ? "configure" : "run"}&ts=${Date.now()}`, {
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      return;
-    }
+    target.src = `/api/live-frame?mode=${mode === "CONFIGURE_CAMERA" ? "configure" : "run"}&ts=${Date.now()}`;
+  }
 
-    const blob = await response.blob();
-    const nextUrl = URL.createObjectURL(blob);
-
-    if (mode === "CONFIGURE_CAMERA") {
-      if (configureBlobUrl) {
-        URL.revokeObjectURL(configureBlobUrl);
-      }
-      configureBlobUrl = nextUrl;
-      target.src = configureBlobUrl;
-    } else {
-      if (runBlobUrl) {
-        URL.revokeObjectURL(runBlobUrl);
-      }
-      runBlobUrl = nextUrl;
-      target.src = runBlobUrl;
-    }
+  function refreshVisibleFrame() {
+    return fetchFrame(currentMode);
   }
 
   function startPolling() {
@@ -57,13 +37,13 @@ export function initLiveView(store) {
       clearInterval(timer);
       timer = null;
     }
-    const fps = currentMode === "CONFIGURE_CAMERA" ? 3 : 4;
+    const fps = currentMode === "CONFIGURE_CAMERA" ? 6 : 4;
     timer = setInterval(() => {
-      fetchFrame(currentMode).catch(() => {
+      refreshVisibleFrame().catch(() => {
         // Keep polling even if one fetch fails.
       });
     }, Math.round(1000 / fps));
-    fetchFrame(currentMode).catch(() => {
+    refreshVisibleFrame().catch(() => {
       // first frame best-effort
     });
   }
@@ -72,7 +52,7 @@ export function initLiveView(store) {
 
   store.subscribe((state) => {
     const snapshot = state.snapshot;
-    const mode = snapshot?.app?.mode || "RUN";
+    const mode = state.ui.mode || snapshot?.app?.mode || "RUN";
     if (mode !== currentMode) {
       currentMode = mode;
       startPolling();

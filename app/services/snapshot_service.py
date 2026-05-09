@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from doctest import debug
 from pathlib import Path
 import threading
 import time
@@ -136,17 +135,14 @@ class SnapshotService:
         snapshot_id = f"{prefix}_{timestamp}_{int(time.time() * 1000)}"
         image_path = self.output_dir / f"{snapshot_id}.jpg"
         crop_path = self.output_dir / f"{snapshot_id}_crop.jpg"
-        cv2.imwrite(str(image_path), frame)
+        snapshot_frame = self._downscale_snapshot_frame(frame)
+        cv2.imwrite(str(image_path), snapshot_frame)
 
         crop = self.extract_crop(frame, card_measurement)
         saved_crop_path: Optional[str] = None
         if crop is not None:
             cv2.imwrite(str(crop_path), crop)
             saved_crop_path = str(crop_path)
-
-        workspace_config = self.context.config["workspace"]
-        debug = self.draw_workspace_debug(frame, workspace_config, source_size=self._get_live_size())
-        cv2.imwrite("data/debug_workspace_overlay.jpg", debug)
 
         return SnapshotRecord(
             snapshot_id=snapshot_id,
@@ -157,6 +153,23 @@ class SnapshotService:
             crop_path=saved_crop_path,
             created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         )
+
+    def _downscale_snapshot_frame(self, frame):
+        import cv2
+
+        max_edge = int(self.context.config.get("snapshot", {}).get("max_save_edge_px", 1920))
+        if max_edge <= 0:
+            return frame
+
+        height, width = frame.shape[:2]
+        longest_edge = max(height, width)
+        if longest_edge <= max_edge:
+            return frame
+
+        scale = max_edge / float(longest_edge)
+        target_width = max(1, int(round(width * scale)))
+        target_height = max(1, int(round(height * scale)))
+        return cv2.resize(frame, (target_width, target_height), interpolation=cv2.INTER_AREA)
 
     def _get_live_size(self):
         camera_config = self.context.config.get("camera", {})

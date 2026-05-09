@@ -299,6 +299,8 @@ class UIService:
                 "source": tracking.get("source", getattr(last_fusion, "source", "idle")),
                 "fusion_state": tracking.get("fusion_state", getattr(last_fusion, "fusion_state", "NO_TARGET")),
                 "confidence": getattr(last_fusion, "confidence", None),
+                "score": getattr(last_fusion, "score", None),
+                "rating": getattr(last_fusion, "rating", None),
                 "card_visible": bool(last_card is not None and getattr(last_card, "visible", False)),
                 "hand_visible": bool(last_hand is not None and getattr(last_hand, "visible", False)),
                 "candidates_count": getattr(runtime.get("last_detection"), "candidates_count", 0),
@@ -425,9 +427,15 @@ class UIService:
         interval_s = max(0.1, interval_s)
         try:
             while True:
-                snapshot = self._build_ui_snapshot()
-                payload = json.dumps(snapshot)
-                yield f"event: ui_snapshot\\ndata: {payload}\\n\\n"
+                try:
+                    snapshot = self._build_ui_snapshot()
+                    payload = json.dumps(snapshot)
+                    yield f"event: ui_snapshot\\ndata: {payload}\\n\\n"
+                except Exception as exc:
+                    if self.context.logger:
+                        self.context.logger.warning(f"UI events snapshot build failed: {exc}")
+                    payload = json.dumps({"type": "ui_heartbeat", "timestamp": time.time()})
+                    yield f"event: ui_heartbeat\\ndata: {payload}\\n\\n"
                 await asyncio.sleep(interval_s)
         except asyncio.CancelledError:
             return
@@ -506,15 +514,30 @@ class UIService:
 
     def _capture_live_frame_once(self):
         camera = self.context.get_service("camera", default=None)
-        if camera is None or not getattr(camera, "opened", False):
-            return None
+        runtime = self.context.runtime
+        frame = None
+        read_from_camera = False
         try:
-            full_frame = camera.read_frame(timeout_s=0.08)
-            live_frame, scale_x, scale_y = make_live_frame(full_frame, self.context.config)
-            self.context.runtime["last_frame"] = full_frame
-            self.context.runtime["last_live_frame"] = live_frame
-            self.context.runtime["last_live_frame_ts"] = time.time()
-            self.context.runtime["live_to_full_scale"] = {"x": scale_x, "y": scale_y}
+            if camera is not None and getattr(camera, "opened", False):
+                frame = camera.read_frame(timeout_s=0.08)
+                read_from_camera = frame is not None
+        except Exception:
+            frame = None
+
+        if frame is None:
+            frame = runtime.get("last_frame")
+            if frame is None:
+                frame = runtime.get("last_live_frame")
+        if frame is None:
+            return None
+
+        try:
+            live_frame, scale_x, scale_y = make_live_frame(frame, self.context.config)
+            if read_from_camera:
+                runtime["last_frame"] = frame
+            runtime["last_live_frame"] = live_frame
+            runtime["last_live_frame_ts"] = time.time()
+            runtime["live_to_full_scale"] = {"x": scale_x, "y": scale_y}
             return live_frame
         except Exception:
             return None

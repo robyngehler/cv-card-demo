@@ -1,4 +1,4 @@
-import { getJson, openUiEvents, postJson } from "./js/api.js";
+import { getJson, openScoreSocket, openUiEvents, postJson } from "./js/api.js";
 import { createStateStore } from "./js/state_store.js";
 import { initRunView } from "./js/run_view.js";
 import { initLiveView } from "./js/live_view.js";
@@ -20,6 +20,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
   let reconnectTimer = null;
   let eventSource = null;
+  let scoreReconnectTimer = null;
+  let scoreSocket = null;
+  let snapshotPollTimer = null;
+  let consecutiveSnapshotFailures = 0;
 
   function updateModeView(mode) {
     const isRun = mode !== "CONFIGURE_CAMERA";
@@ -61,20 +65,37 @@ window.addEventListener("DOMContentLoaded", () => {
       backendReachable: true,
       reconnectAttempt: 0,
     });
+    consecutiveSnapshotFailures = 0;
 
     updateModeView(snapshot?.app?.mode || "RUN");
+  }
+
+  function clearReconnectTimer(timerId) {
+    if (timerId) {
+      clearTimeout(timerId);
+    }
+    return null;
+  }
+
+  function scheduleReconnect(previousTimer, callback) {
+    const nextAttempt = (store.state.connection.reconnectAttempt || 0) + 1;
+    const delayMs = Math.min(10000, 400 * Math.pow(2, Math.min(nextAttempt, 5)));
+    return {
+      timer: setTimeout(callback, delayMs),
+      delayMs,
+      nextAttempt,
+      previousTimer,
+    };
   }
 
   function connectEventStream() {
     eventSource = openUiEvents();
 
     eventSource.addEventListener("open", () => {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
+      reconnectTimer = clearReconnectTimer(reconnectTimer);
       store.merge("connection", {
         events: "CONNECTED",
+        backendReachable: true,
         reconnectAttempt: 0,
       });
       store.pushEvent("events", "SSE connected");
@@ -93,44 +114,119 @@ window.addEventListener("DOMContentLoaded", () => {
       if (eventSource) {
         eventSource.close();
       }
-      const nextAttempt = (store.state.connection.reconnectAttempt || 0) + 1;
-      const delayMs = Math.min(10000, 400 * Math.pow(2, Math.min(nextAttempt, 5)));
+      const reconnect = scheduleReconnect(reconnectTimer, connectEventStream);
+      reconnectTimer = reconnect.timer;
       store.merge("connection", {
         events: "DISCONNECTED",
-        reconnectAttempt: nextAttempt,
-        backendReachable: false,
+        reconnectAttempt: reconnect.nextAttempt,
       });
-      store.pushEvent("events", `SSE disconnected, reconnect in ${delayMs}ms`);
-      reconnectTimer = setTimeout(connectEventStream, delayMs);
+      store.pushEvent("events", `SSE disconnected, reconnect in ${reconnect.delayMs}ms`);
+    });
+  }
+
+  function connectScoreStream() {
+    scoreSocket = openScoreSocket();
+
+    scoreSocket.addEventListener("open", () => {
+      scoreReconnectTimer = clearReconnectTimer(scoreReconnectTimer);
+      store.merge("connection", {
+        score: "CONNECTED",
+        backendReachable: true,
+      });
+      store.pushEvent("score", "Score stream connected");
+    });
+
+    scoreSocket.addEventListener("message", (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        if (payload?.type === "score_update" && payload.score) {
+          store.merge("live", {
+            score: payload.score,
+            lastEventAt: new Date().toISOString(),
+          });
+        }
+      } catch (_error) {
+        store.pushEvent("score", "Invalid score payload");
+      }
+    });
+
+    scoreSocket.addEventListener("close", () => {
+      const reconnect = scheduleReconnect(scoreReconnectTimer, connectScoreStream);
+      scoreReconnectTimer = reconnect.timer;
+      store.merge("connection", {
+        score: "DISCONNECTED",
+      });
+      store.pushEvent("score", `Score stream disconnected, reconnect in ${reconnect.delayMs}ms`);
+    });
+
+    scoreSocket.addEventListener("error", () => {
+      if (scoreSocket) {
+        scoreSocket.close();
+      }
     });
   }
 
   async function loadInitialSnapshot() {
-    const response = await getJson("/api/ui/snapshot");
-    if (!response.ok || !response.data) {
-      store.merge("connection", { backendReachable: false });
-      return;
+    try {
+      const response = await getJson("/api/ui/snapshot");
+      if (!response.ok || !response.data) {
+        consecutiveSnapshotFailures += 1;
+        if (consecutiveSnapshotFailures >= 3) {
+          store.merge("connection", { backendReachable: false });
+        }
+        return;
+      }
+      applySnapshot(response.data);
+    } catch (_error) {
+      consecutiveSnapshotFailures += 1;
+      if (consecutiveSnapshotFailures >= 3) {
+        store.merge("connection", { backendReachable: false });
+      }
     }
-    applySnapshot(response.data);
   }
 
   async function refreshSnapshotOnce() {
-    const response = await getJson("/api/ui/snapshot");
-    if (response.ok && response.data) {
-      applySnapshot(response.data);
+    try {
+      const response = await getJson("/api/ui/snapshot");
+      if (response.ok && response.data) {
+        applySnapshot(response.data);
+        return;
+      }
+      consecutiveSnapshotFailures += 1;
+      if (consecutiveSnapshotFailures >= 3) {
+        store.merge("connection", { backendReachable: false });
+      }
+    } catch (_error) {
+      consecutiveSnapshotFailures += 1;
+      if (consecutiveSnapshotFailures >= 3) {
+        store.merge("connection", { backendReachable: false });
+      }
     }
   }
 
   store.subscribe((state) => {
     const ws = state.connection.events;
+    const score = state.connection.score;
     const reachable = state.connection.backendReachable;
-    connectionPill.textContent = `${ws}${reachable ? "" : " / API DOWN"}`;
+    const connectionState = !reachable
+      ? { label: "API DOWN", className: "error" }
+      : ws === "CONNECTED" && score === "CONNECTED"
+        ? { label: "LIVE", className: "ok" }
+        : ws === "DISCONNECTED" || score === "DISCONNECTED"
+          ? { label: "RECONNECTING", className: "warn" }
+          : { label: "CONNECTING", className: "warn" };
+    if (connectionPill) {
+      connectionPill.textContent = connectionState.label;
+      connectionPill.classList.remove("ok", "warn", "error");
+      connectionPill.classList.add(connectionState.className);
+    }
   });
 
   if (modeRunButton) {
     modeRunButton.addEventListener("click", () => {
       postJson("/api/mode/run", {})
         .then(() => {
+          store.patch("ui.mode", "RUN");
           updateModeView("RUN");
           store.pushEvent("mode", "Switched to RUN");
           return refreshSnapshotOnce();
@@ -145,6 +241,7 @@ window.addEventListener("DOMContentLoaded", () => {
     modeConfigureButton.addEventListener("click", () => {
       postJson("/api/mode/configure-camera", {})
         .then(() => {
+          store.patch("ui.mode", "CONFIGURE_CAMERA");
           updateModeView("CONFIGURE_CAMERA");
           store.pushEvent("mode", "Switched to CONFIGURE_CAMERA");
           return refreshSnapshotOnce();
@@ -160,4 +257,13 @@ window.addEventListener("DOMContentLoaded", () => {
     store.pushEvent("snapshot", "Initial snapshot failed");
   });
   connectEventStream();
+  connectScoreStream();
+  snapshotPollTimer = setInterval(() => {
+    refreshSnapshotOnce().catch(() => {
+      consecutiveSnapshotFailures += 1;
+      if (consecutiveSnapshotFailures >= 3) {
+        store.merge("connection", { backendReachable: false });
+      }
+    });
+  }, 1000);
 });

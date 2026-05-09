@@ -10,6 +10,7 @@ export function createStateStore() {
     },
     connection: {
       events: "CONNECTING",
+      score: "CONNECTING",
       lastEventAt: null,
       backendReachable: false,
       reconnectAttempt: 0,

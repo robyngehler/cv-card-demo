@@ -21,3 +21,8 @@ export async function postJson(url, payload = {}) {
 export function openUiEvents() {
   return new EventSource("/api/ui/events");
 }
+
+export function openScoreSocket() {
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  return new WebSocket(`${protocol}://${window.location.host}/ws/score`);
+}

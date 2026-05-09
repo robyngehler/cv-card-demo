@@ -16,6 +16,9 @@ export function initDiagnosticsView(store) {
     if (drawer) {
       drawer.classList.toggle("hidden", !open);
     }
+    if (button) {
+      button.classList.toggle("active", open);
+    }
 
     const snapshot = state.snapshot || {};
     const services = snapshot.services || {};

@@ -1,4 +1,5 @@
 import time
+import numpy as np
 
 from app.utils.frame_scaling import make_live_frame
 
@@ -322,12 +323,12 @@ class TrackingState:
         if card_measurement is not None:
             bbox_points = getattr(card_measurement, "bbox_points", None) or []
             if bbox_points:
-                full_points = [workspace_service.to_full_frame(point, workspace_name="card") for point in bbox_points]
+                live_points = [workspace_service.to_full_frame(point, workspace_name="card") for point in bbox_points]
                 polyline = [
                     [int(point[0]), int(point[1])]
-                    for point in full_points
+                    for point in live_points
                 ]
-                cv2.polylines(overlay, [cv2.UMat(polyline).get() if False else __import__("numpy").array(polyline, dtype="int32")], True, (82, 222, 151), 2)
+                cv2.polylines(overlay, [np.array(polyline, dtype="int32")], True, (82, 222, 151), 2)
             center_x, center_y = workspace_service.to_full_frame((card_measurement.x, card_measurement.y), workspace_name="card")
             cv2.circle(overlay, (int(center_x), int(center_y)), 5, (82, 222, 151), -1)
 
