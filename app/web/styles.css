@@ -393,6 +393,17 @@ h3 {
   margin-top: 0.45rem;
 }
 
+.control-row-auto {
+  margin-top: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .control-actions {
   margin-top: 0.8rem;
   display: flex;

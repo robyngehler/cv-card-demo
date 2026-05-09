@@ -15,6 +15,7 @@ class CardDetectorService:
         self.classical_detector = ClassicalCardDetector(context)
         self.yolo_detector = YoloCardDetector(context)
         self.last_detection_by_state: Dict[str, float] = {}
+        self._fallback_warning_emitted = False
         self.cached_result = CardDetectionResult(
             visible=False,
             status="NOT_RUN",
@@ -29,8 +30,34 @@ class CardDetectorService:
         if not self._should_run_detection(state_name):
             return self._build_cached_result()
 
-        detector = self._select_detector()
-        result = detector.detect(workspace_frame)
+        detector, active_detector, fallback_reason = self._select_detector()
+        if detector is None:
+            result = CardDetectionResult(
+                visible=False,
+                status="DETECTOR_UNAVAILABLE",
+                error=fallback_reason,
+                detector_type="detector_unavailable",
+                primary_label=(
+                    self.context.config.get("detector", {}).get("business_card_label")
+                    or "business_card"
+                ),
+                debug={
+                    "requested_detector": self._requested_detector(),
+                    "active_detector": "none",
+                    "fallback_reason": fallback_reason,
+                },
+            )
+        else:
+            result = detector.detect(workspace_frame)
+            result = replace(
+                result,
+                debug={
+                    **dict(result.debug),
+                    "requested_detector": self._requested_detector(),
+                    "active_detector": active_detector,
+                    "fallback_reason": fallback_reason,
+                },
+            )
         normalized_result = self._normalize_result(result)
         self.cached_result = normalized_result
         self.last_detection_by_state[state_name] = time.monotonic()
@@ -44,6 +71,9 @@ class CardDetectorService:
             "candidates_count": self.cached_result.candidates_count,
             "detector_type": self.cached_result.detector_type,
             "primary_label": self.cached_result.primary_label,
+            "requested_detector": self._requested_detector(),
+            "active_detector": self.cached_result.debug.get("active_detector"),
+            "fallback_reason": self.cached_result.debug.get("fallback_reason"),
         }
         if self.cached_result.candidate is not None:
             payload["confidence"] = self.cached_result.candidate.confidence
@@ -52,10 +82,32 @@ class CardDetectorService:
         return payload
 
     def _select_detector(self):
-        detector_type = self.context.config.get("detector", {}).get("type", "classical")
-        if detector_type == "yolo" and self.yolo_detector.available:
-            return self.yolo_detector
-        return self.classical_detector
+        detector_type = self._requested_detector()
+        if detector_type == "yolo":
+            if self.yolo_detector.available:
+                return self.yolo_detector, self.yolo_detector.detector_name, None
+
+            fallback_enabled = bool(
+                self.context.config.get("detector", {}).get("yolo", {}).get("fallback_to_classical", True)
+            )
+            fallback_reason = self.yolo_detector.get_status().get("last_error") or "yolo_not_ready"
+
+            if fallback_enabled:
+                if not self._fallback_warning_emitted and self.context.logger is not None:
+                    self.context.logger.warning(
+                        "Detector fallback active: requested=yolo active=classical_contour "
+                        f"reason={fallback_reason}"
+                    )
+                    self._fallback_warning_emitted = True
+                return self.classical_detector, self.classical_detector.detector_name, fallback_reason
+
+            return None, "none", fallback_reason
+
+        return self.classical_detector, self.classical_detector.detector_name, None
+
+    def _requested_detector(self) -> str:
+        detector_type = str(self.context.config.get("detector", {}).get("type", "classical")).strip().lower()
+        return detector_type or "classical"
 
     def _select_detector_status(self) -> Dict[str, Any]:
         detector_type = self.context.config.get("detector", {}).get("type", "classical")

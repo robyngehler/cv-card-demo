@@ -22,6 +22,7 @@ class CameraControlService:
     PROPERTY_SPECS = (
         CameraPropertySpec("exposure", "CAP_PROP_EXPOSURE", -13.0, 0.0, 1.0, supports_auto=True, auto_prop="CAP_PROP_AUTO_EXPOSURE"),
         CameraPropertySpec("focus", "CAP_PROP_FOCUS", 0.0, 255.0, 1.0, supports_auto=True, auto_prop="CAP_PROP_AUTOFOCUS"),
+        CameraPropertySpec("zoom", "CAP_PROP_ZOOM", 0.0, 500.0, 1.0),
         CameraPropertySpec("sharpness", "CAP_PROP_SHARPNESS", 0.0, 255.0, 1.0),
         CameraPropertySpec("brightness", "CAP_PROP_BRIGHTNESS", 0.0, 255.0, 1.0),
         CameraPropertySpec("contrast", "CAP_PROP_CONTRAST", 0.0, 255.0, 1.0),
@@ -105,6 +106,7 @@ class CameraControlService:
 
         applied: Dict[str, bool] = {}
         rejected: Dict[str, str] = {}
+        backend = self._backend_name(camera)
 
         for key, value in (updates or {}).items():
             if key in self.AUTO_KEY_MAP:
@@ -117,7 +119,11 @@ class CameraControlService:
                 if auto_prop_id is None:
                     rejected[key] = "unsupported"
                     continue
-                ok = self._set_property(camera, auto_prop_id, self._encode_auto_value(prop_key, bool(value)))
+                ok = self._set_property(
+                    camera,
+                    auto_prop_id,
+                    self._encode_auto_value(prop_key, bool(value), backend=backend),
+                )
                 applied[key] = bool(ok)
                 if not ok:
                     rejected[key] = "set_failed"
@@ -140,13 +146,37 @@ class CameraControlService:
                 continue
 
             supported, current_value = self._read_property(camera, prop_id)
-            backend = self._backend_name(camera)
             min_value, max_value = self._effective_range(spec, current_value if supported else numeric, backend)
             clamped = min(max_value, max(min_value, numeric))
+
+            if spec.supports_auto and spec.auto_prop:
+                auto_prop_id = getattr(cv2, spec.auto_prop, None)
+                auto_supported, auto_value = self._read_property(camera, auto_prop_id)
+                if auto_supported and self._normalize_auto_value(spec.key, auto_value):
+                    auto_disable_ok = self._set_property(
+                        camera,
+                        auto_prop_id,
+                        self._encode_auto_value(spec.key, False, backend=backend),
+                    )
+                    if auto_disable_ok:
+                        applied[f"auto_{spec.key}"] = True
+                    else:
+                        rejected[f"auto_{spec.key}"] = "set_failed"
+
             ok = self._set_property(camera, prop_id, clamped)
-            applied[key] = bool(ok)
             if not ok:
+                applied[key] = False
                 rejected[key] = "set_failed"
+                continue
+
+            read_ok, read_value = self._read_property(camera, prop_id)
+            if read_ok:
+                tolerance = max(0.25, abs(float(spec.default_step)) * 2.0)
+                if abs(float(read_value) - float(clamped)) > tolerance:
+                    applied[key] = False
+                    rejected[key] = "readback_mismatch"
+                    continue
+            applied[key] = True
 
         status = "OK" if not rejected else "PARTIAL"
         refreshed = self.get_capabilities()
@@ -292,11 +322,14 @@ class CameraControlService:
 
     def _normalize_auto_value(self, key: str, raw_value: float) -> bool:
         if key == "exposure":
+            # V4L2 commonly reports 0.25 (manual) and 0.75 (auto).
             return bool(raw_value >= 0.5)
         return bool(raw_value >= 0.5)
 
-    def _encode_auto_value(self, key: str, enabled: bool) -> float:
+    def _encode_auto_value(self, key: str, enabled: bool, backend: str = "opencv") -> float:
         if key == "exposure":
-            # CAP_PROP_AUTO_EXPOSURE is backend-specific; 1.0/0.0 is the most portable fallback.
+            if backend == "v4l2":
+                return 0.75 if enabled else 0.25
+            # CAP_PROP_AUTO_EXPOSURE is backend-specific; 1.0/0.0 is a common fallback.
             return 1.0 if enabled else 0.0
         return 1.0 if enabled else 0.0

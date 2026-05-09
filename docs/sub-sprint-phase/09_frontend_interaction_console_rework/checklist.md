@@ -33,6 +33,10 @@ Stabilize the operator UI so RUN and CONFIGURE flows remain responsive and consi
 - [x] Make CONFIGURE preview fall back to cached live frames
 - [x] Reduce snapshot write cost by downscaling saved frames and removing extra debug overlay writes
 - [x] Validate runtime behavior on target camera with manual pass
+- [x] Add configure-view support for auto toggles and zoom camera control
+- [x] Harden camera apply flow with backend-aware auto/manual handling and readback checks
+- [x] Harden classical detector geometry/confidence filters against empty-scene false positives
+- [x] Expose requested-vs-active detector backend and fallback reason in runtime status
 
 ## Acceptance Criteria
 
@@ -50,6 +54,8 @@ Stabilize the operator UI so RUN and CONFIGURE flows remain responsive and consi
 5. Hold card steady for countdown and verify snapshot trigger behavior.
 6. Confirm diagnostics drawer and connection pill color states.
 7. Verify camera settings readback matches the terminal-side camera values.
+8. In an empty workspace (no card/no hand), verify no stable card candidate is accepted.
+9. Place a real business card and verify candidate detection still reaches TRACKING.
 
 ## Current Status
 

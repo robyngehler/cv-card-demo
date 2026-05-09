@@ -7,6 +7,7 @@ server:
   host: "0.0.0.0"
   port: 8000
   ui_static_dir: "/opt/cv-card-demo/app/web"
+  live_capture_min_interval_s: 0.12
 
 boot:
   next_state: "INIT_CAM"
@@ -47,8 +48,11 @@ detector:
     SNAPSHOT: 0
 
   yolo:
+    # Path to YOLO model (e.g., "./models/yolov8n.pt")
+    # Leave empty to skip YOLO and use classical detector.
     model_path: ""
     confidence: 0.25
+    fallback_to_classical: true
 
   preprocessing:
     grayscale: true
@@ -65,10 +69,15 @@ detector:
     max_area_ratio: 0.8
     min_aspect_ratio: 1.2
     max_aspect_ratio: 2.2
+    min_rectangularity: 0.76
+    min_solidity: 0.90
+    require_quadrilateral: true
+    border_margin_px: 10
 
   confidence:
-    min_confidence: 0.35
-    expected_card_area_px: 3200
+    min_confidence: 0.55
+    expected_card_area_px: 6500
+    min_area_similarity: 0.22
     target_aspect_ratio: 1.65
     aspect_tolerance: 0.55
     weight_area: 0.35
@@ -80,6 +89,7 @@ tracking:
   candidate_max_lost_frames: 2
   tracking_max_lost_duration_s: 0.5
   poll_interval_s: 0.033
+  debug_log_every_frame: false
 
   hand:
     enabled: true

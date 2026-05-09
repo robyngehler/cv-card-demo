@@ -94,8 +94,13 @@ class ClassicalCardDetector:
         max_area_ratio = float(contour_filter.get("max_area_ratio", 0.8))
         min_aspect_ratio = float(contour_filter.get("min_aspect_ratio", 1.2))
         max_aspect_ratio = float(contour_filter.get("max_aspect_ratio", 2.2))
+        min_rectangularity = float(contour_filter.get("min_rectangularity", 0.72))
+        min_solidity = float(contour_filter.get("min_solidity", 0.88))
+        require_quadrilateral = bool(contour_filter.get("require_quadrilateral", True))
+        border_margin_px = max(0, int(contour_filter.get("border_margin_px", 6)))
         min_confidence = float(confidence_cfg.get("min_confidence", 0.5))
         expected_card_area_px = float(confidence_cfg.get("expected_card_area_px", 3200.0))
+        min_area_similarity = float(confidence_cfg.get("min_area_similarity", 0.18))
         target_aspect_ratio = float(confidence_cfg.get("target_aspect_ratio", 1.65))
         aspect_tolerance = max(0.01, float(confidence_cfg.get("aspect_tolerance", 0.55)))
         weight_area = float(confidence_cfg.get("weight_area", 0.35))
@@ -142,35 +147,95 @@ class ClassicalCardDetector:
         contours = contours_result[0] if len(contours_result) == 2 else contours_result[1]
 
         frame_area = float(mask.shape[0] * mask.shape[1])
+        width_px = int(mask.shape[1])
+        height_px = int(mask.shape[0])
+        expected_area_px = max(expected_card_area_px, float(min_area_px) * 4.0)
         candidates = []
         debug_contours = []
+        rejection_counts = {
+            "area": 0,
+            "aspect": 0,
+            "border": 0,
+            "quadrilateral": 0,
+            "rectangularity": 0,
+            "solidity": 0,
+            "confidence": 0,
+            "area_similarity": 0,
+        }
         for contour in contours:
             area = float(cv2.contourArea(contour))
             if area < min_area_px or area > frame_area * max_area_ratio:
+                rejection_counts["area"] += 1
                 continue
 
             rect = cv2.minAreaRect(contour)
             (center_x, center_y), (width, height), theta_deg = rect
             if width <= 0 or height <= 0:
+                rejection_counts["area"] += 1
                 continue
 
             aspect_ratio = max(width, height) / min(width, height)
             if aspect_ratio < min_aspect_ratio or aspect_ratio > max_aspect_ratio:
+                rejection_counts["aspect"] += 1
                 continue
+
+            if border_margin_px > 0:
+                box_points = cv2.boxPoints(rect)
+                touches_border = False
+                for px, py in box_points:
+                    if (
+                        px <= border_margin_px
+                        or py <= border_margin_px
+                        or px >= (width_px - border_margin_px)
+                        or py >= (height_px - border_margin_px)
+                    ):
+                        touches_border = True
+                        break
+                if touches_border:
+                    rejection_counts["border"] += 1
+                    continue
+
+            perimeter = float(cv2.arcLength(contour, True))
+            if require_quadrilateral and perimeter > 0.0:
+                approx = cv2.approxPolyDP(contour, 0.035 * perimeter, True)
+                if len(approx) != 4 or not cv2.isContourConvex(approx):
+                    rejection_counts["quadrilateral"] += 1
+                    continue
 
             rect_area = float(width * height)
             if rect_area <= 0.0:
+                rejection_counts["area"] += 1
                 continue
 
-            area_score = clamp(area / expected_card_area_px)
-            aspect_score = clamp(1.0 - (abs(aspect_ratio - target_aspect_ratio) / aspect_tolerance))
             rectangularity_score = clamp(area / rect_area)
+            if rectangularity_score < min_rectangularity:
+                rejection_counts["rectangularity"] += 1
+                continue
+
+            hull = cv2.convexHull(contour)
+            hull_area = float(cv2.contourArea(hull))
+            if hull_area <= 0.0:
+                rejection_counts["solidity"] += 1
+                continue
+
+            solidity = clamp(area / hull_area)
+            if solidity < min_solidity:
+                rejection_counts["solidity"] += 1
+                continue
+
+            area_score = clamp(1.0 - abs(area - expected_area_px) / max(expected_area_px, 1.0))
+            if area_score < min_area_similarity:
+                rejection_counts["area_similarity"] += 1
+                continue
+
+            aspect_score = clamp(1.0 - (abs(aspect_ratio - target_aspect_ratio) / aspect_tolerance))
             confidence = clamp(
                 (weight_area * area_score)
                 + (weight_aspect * aspect_score)
                 + (weight_rectangularity * rectangularity_score)
             )
             if confidence < min_confidence:
+                rejection_counts["confidence"] += 1
                 continue
 
             x_normalized = clamp(float(center_x) / float(mask.shape[1]))
@@ -195,8 +260,10 @@ class ClassicalCardDetector:
             debug_contours.append(
                 {
                     "area": area,
+                    "area_similarity": area_score,
                     "aspect_ratio": aspect_ratio,
                     "rectangularity": rectangularity_score,
+                    "solidity": solidity,
                     "confidence": confidence,
                 }
             )
@@ -216,7 +283,11 @@ class ClassicalCardDetector:
                 candidates=sorted(candidates, key=lambda pose: pose.confidence, reverse=True),
                 candidates_count=len(candidates),
                 status="OK",
-                debug={"contours": debug_contours},
+                debug={
+                    "contours": debug_contours,
+                    "rejections": rejection_counts,
+                    "expected_area_px": expected_area_px,
+                },
                 detector_type=self.detector_name,
                 primary_label=self.business_card_label,
             )
@@ -228,7 +299,11 @@ class ClassicalCardDetector:
             candidates=[],
             candidates_count=0,
             status="OK",
-            debug={"contours": debug_contours},
+            debug={
+                "contours": debug_contours,
+                "rejections": rejection_counts,
+                "expected_area_px": expected_area_px,
+            },
             detector_type=self.detector_name,
             primary_label=self.business_card_label,
         )
@@ -289,10 +364,10 @@ class ClassicalCardDetector:
         self,
         status: str,
         *,
-        visible: bool,
-        candidates_count: int,
-        confidence: float,
-        x_normalized: Optional[float],
+        visible: bool = False,
+        candidates_count: int = 0,
+        confidence: float = 0.0,
+        x_normalized: Optional[float] = None,
         error: Optional[str] = None,
     ) -> None:
         self.status.update(

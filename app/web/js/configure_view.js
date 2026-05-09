@@ -3,6 +3,7 @@ import { getJson, postJson } from "./api.js";
 const CONTROL_ORDER = [
   "exposure",
   "focus",
+  "zoom",
   "sharpness",
   "brightness",
   "contrast",
@@ -10,6 +11,12 @@ const CONTROL_ORDER = [
   "gain",
   "white_balance",
 ];
+
+const AUTO_TOGGLE_MAP = {
+  exposure: "auto_exposure",
+  focus: "auto_focus",
+  white_balance: "auto_white_balance",
+};
 
 const EPSILON = 1e-6;
 
@@ -59,14 +66,34 @@ function buildControlItem(key, descriptor) {
     ? `${descriptor.min}..${descriptor.max}`
     : "not supported by active backend";
 
+  let autoToggle = null;
+  let autoWrap = null;
+  if (descriptor.auto_supported && AUTO_TOGGLE_MAP[key]) {
+    autoWrap = document.createElement("label");
+    autoWrap.className = "control-row-auto";
+    autoToggle = document.createElement("input");
+    autoToggle.type = "checkbox";
+    autoToggle.checked = Boolean(descriptor.auto);
+    autoToggle.disabled = !descriptor.supported;
+    autoToggle.dataset.autoKey = AUTO_TOGGLE_MAP[key];
+    const text = document.createElement("span");
+    text.textContent = AUTO_TOGGLE_MAP[key].replaceAll("_", " ");
+    autoWrap.appendChild(autoToggle);
+    autoWrap.appendChild(text);
+  }
+
   wrapper.appendChild(top);
   wrapper.appendChild(input);
+  if (autoWrap) {
+    wrapper.appendChild(autoWrap);
+  }
   wrapper.appendChild(foot);
   return {
     wrapper,
     input,
     value,
     foot,
+    autoToggle,
   };
 }
 
@@ -106,6 +133,8 @@ export function initConfigureView(store) {
     byKey: {},
     backendValues: {},
     draftValues: {},
+    autoBackendValues: {},
+    autoDraftValues: {},
     meta: {},
   };
 
@@ -129,8 +158,14 @@ export function initConfigureView(store) {
       return;
     }
 
+    const previousDraftValues = { ...controlsState.draftValues };
+    const previousAutoDraftValues = { ...controlsState.autoDraftValues };
     controlsRoot.innerHTML = "";
     controlsState.byKey = {};
+    controlsState.backendValues = {};
+    controlsState.draftValues = {};
+    controlsState.autoBackendValues = {};
+    controlsState.autoDraftValues = {};
     controlsState.meta = {};
 
     CONTROL_ORDER.forEach((key) => {
@@ -143,11 +178,19 @@ export function initConfigureView(store) {
       const max = toNumber(descriptor.max, 100);
       const step = toNumber(descriptor.step, 1);
       const backendValue = toNumber(descriptor.value, min);
-      const oldDraft = toNumber(controlsState.draftValues[key], null);
+      const oldDraft = toNumber(previousDraftValues[key], null);
       const nextValue = clamp(oldDraft !== null ? oldDraft : backendValue, min, max);
+      const autoSettingKey = AUTO_TOGGLE_MAP[key] || null;
+      const backendAuto = Boolean(descriptor.auto);
+      const oldAutoDraft = previousAutoDraftValues[autoSettingKey];
+      const nextAuto = oldAutoDraft === undefined ? backendAuto : Boolean(oldAutoDraft);
 
       controlsState.backendValues[key] = backendValue;
       controlsState.draftValues[key] = nextValue;
+      if (autoSettingKey) {
+        controlsState.autoBackendValues[autoSettingKey] = backendAuto;
+        controlsState.autoDraftValues[autoSettingKey] = nextAuto;
+      }
       controlsState.meta[key] = { min, max, step, supported: Boolean(descriptor.supported) };
 
       field.input.value = String(nextValue ?? min);
@@ -161,6 +204,13 @@ export function initConfigureView(store) {
         controlsState.draftValues[key] = v;
         field.value.textContent = field.input.value;
       });
+
+      if (field.autoToggle && autoSettingKey) {
+        field.autoToggle.checked = nextAuto;
+        field.autoToggle.addEventListener("change", () => {
+          controlsState.autoDraftValues[autoSettingKey] = Boolean(field.autoToggle.checked);
+        });
+      }
 
       controlsState.byKey[key] = field;
       controlsRoot.appendChild(field.wrapper);
@@ -176,6 +226,14 @@ export function initConfigureView(store) {
       return;
     }
     const payload = {};
+    Object.keys(controlsState.autoDraftValues).forEach((autoKey) => {
+      const draft = Boolean(controlsState.autoDraftValues[autoKey]);
+      const backend = Boolean(controlsState.autoBackendValues[autoKey]);
+      if (draft !== backend) {
+        payload[autoKey] = draft;
+      }
+    });
+
     Object.keys(controlsState.byKey).forEach((key) => {
       const field = controlsState.byKey[key];
       const meta = controlsState.meta[key] || {};
@@ -209,6 +267,14 @@ export function initConfigureView(store) {
       const newValue = toNumber(appliedValues[key], null);
       if (newValue !== null) {
         controlsState.draftValues[key] = newValue;
+      }
+    });
+
+    const settings = data.settings || {};
+    Object.keys(AUTO_TOGGLE_MAP).forEach((key) => {
+      const autoKey = AUTO_TOGGLE_MAP[key];
+      if (settings[key] && typeof settings[key].auto === "boolean") {
+        controlsState.autoDraftValues[autoKey] = Boolean(settings[key].auto);
       }
     });
 

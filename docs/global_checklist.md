@@ -13,9 +13,9 @@ Status: IN_PROGRESS
 
 ## Current Focus
 
-- Confirm the final booth-camera manual pass on the target setup.
-- Verify countdown/snapshot transitions in a live run with an actual card.
-- Keep snapshot storage lightweight and only retain what helps debugging.
+- Validate detector behavior after anti-false-positive hardening (empty scene vs real business card).
+- Verify YOLO/classical runtime selection visibility in diagnostics and logs.
+- Re-run camera control manual pass for exposure/focus/zoom/white-balance apply-readback.
 
 ## Acceptance Criteria (MVP)
 
@@ -26,8 +26,8 @@ Status: IN_PROGRESS
 
 ## Known Blockers
 
-- None confirmed after latest patch pass; requires one last manual booth-style countdown/snapshot check.
+- YOLO is currently configured without model_path, so runtime falls back to classical detector.
 
 ## Next Recommended Step
 
-- Run end-to-end manual test in booth setup and tune thresholds if ambient lighting causes unstable candidates.
+- Run end-to-end booth test and tune detector area/aspect confidence only if real-card recall is too strict.

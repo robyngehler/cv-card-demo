@@ -515,6 +515,19 @@ class UIService:
     def _capture_live_frame_once(self):
         camera = self.context.get_service("camera", default=None)
         runtime = self.context.runtime
+        frame = runtime.get("last_frame")
+        cached_live = runtime.get("last_live_frame")
+        last_live_ts = runtime.get("last_live_frame_ts")
+        min_interval = float(self.context.config.get("server", {}).get("live_capture_min_interval_s", 0.12))
+        min_interval = max(0.02, min_interval)
+
+        if cached_live is not None and last_live_ts is not None:
+            try:
+                if (time.time() - float(last_live_ts)) <= min_interval:
+                    return cached_live
+            except Exception:
+                pass
+
         frame = None
         read_from_camera = False
         try:

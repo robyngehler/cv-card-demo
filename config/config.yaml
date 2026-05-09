@@ -9,6 +9,7 @@ server:
   ui_static_dir: "./app/web"
   ui_events_interval_s: 0.33
   live_stream_jpeg_quality: 65
+  live_capture_min_interval_s: 0.12
 
 boot:
   next_state: "INIT_CAM"
@@ -43,7 +44,7 @@ workspace:
       height: 364
 
 detector:
-  type: "classical"
+  type: "yolo"
   enabled: true
   business_card_label: "business_card"
   require_business_card_candidate: true
@@ -55,8 +56,9 @@ detector:
     SNAPSHOT: 0
 
   yolo:
-    model_path: ""
+    model_path: "./models/yolov8n.pt"
     confidence: 0.25
+    fallback_to_classical: true
 
   preprocessing:
     grayscale: true
@@ -73,10 +75,15 @@ detector:
     max_area_ratio: 0.8
     min_aspect_ratio: 1.2
     max_aspect_ratio: 2.2
+    min_rectangularity: 0.76
+    min_solidity: 0.90
+    require_quadrilateral: true
+    border_margin_px: 10
 
   confidence:
     min_confidence: 0.45
-    expected_card_area_px: 1200
+    expected_card_area_px: 6500
+    min_area_similarity: 0.22
     target_aspect_ratio: 1.65
     aspect_tolerance: 0.55
     weight_area: 0.35
@@ -88,6 +95,7 @@ tracking:
   candidate_max_lost_frames: 2
   tracking_max_lost_duration_s: 0.5
   poll_interval_s: 0.033
+  debug_log_every_frame: false
 
   hand:
     enabled: true

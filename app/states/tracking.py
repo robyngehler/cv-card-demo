@@ -143,7 +143,8 @@ class TrackingState:
             now=now,
         )
         t4 = time.perf_counter()
-        if self.context.logger:
+        debug_every_frame = bool(self.context.config.get("tracking", {}).get("debug_log_every_frame", False))
+        if self.context.logger and debug_every_frame:
             self.context.logger.info(
                 "TRACKING_DEBUG "
                 f"det_visible={result.visible} "

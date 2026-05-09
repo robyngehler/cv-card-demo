@@ -89,3 +89,33 @@
 - Fix applied: Downscaled saved snapshot frames to a configurable max edge and removed the extra overlay write.
 - Verification: Backend compiled cleanly and kept serving live streams during runtime validation.
 - Status: DONE
+
+## 2026-05-09 - Detector appeared to run YOLO but actually used classical fallback
+
+- Context: Runtime detector selection with `detector.type: yolo`.
+- Observed: False positives remained similar to classical mode; backend usage was unclear.
+- Expected: Clear visibility of requested detector, active detector, and fallback reason.
+- Suspected cause: YOLO `model_path` empty (`NOT_CONFIGURED`) and silent fallback to classical detector.
+- Fix applied: Added explicit requested/active detector metadata and fallback reason to detector result/status; emit one warning log when fallback is active.
+- Verification: Static error scan passed; diagnostics payload now includes fallback metadata.
+- Status: DONE
+
+## 2026-05-09 - Empty-scene false positives produced card-like confidence
+
+- Context: Classical contour detector in no-card/no-hand scene.
+- Observed: Stable false positives reached candidate/tracking with score comparable to real cards.
+- Expected: Empty scene should remain `NO_TARGET`.
+- Suspected cause: Area score rewarded larger contours (monotonic), weak geometric gating, and border-touching shapes not rejected.
+- Fix applied: Reworked confidence area term to similarity around expected area, added quadrilateral/convex checks, rectangularity/solidity minimums, border-margin rejection, stricter tuned defaults, and richer rejection debug counters.
+- Verification: Static error scan passed.
+- Status: DONE
+
+## 2026-05-09 - Camera sliders snapped back after Apply for exposure/white balance/focus
+
+- Context: Configure camera UI and backend camera control apply flow.
+- Observed: Some controls reverted immediately after apply and did not persist.
+- Expected: Applied values should persist or report explicit readback mismatch.
+- Suspected cause: Missing auto-mode toggles in configure view, backend-specific auto-exposure encoding mismatch on V4L2, and no readback validation.
+- Fix applied: Added auto toggles + zoom to configure UI, implemented backend-aware auto exposure values (`0.75/0.25` for V4L2), auto-disable before manual property write, and readback mismatch rejection.
+- Verification: Static error scan passed.
+- Status: DONE
