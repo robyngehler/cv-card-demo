@@ -13,6 +13,56 @@ boot:
   max_boot_duration_s: 10
   allow_degraded_wled: true
 
+workspace:
+  mode: "manual_rect"
+  source_frame: "camera"
+  rect_px:
+    x: 80
+    y: 60
+    width: 480
+    height: 340
+  score_axis: "x"
+  invert_score_axis: false
+
+detector:
+  type: "classical"
+  enabled: true
+
+  preprocessing:
+    grayscale: true
+    blur_kernel: 5
+    threshold_mode: "otsu"
+    canny_enabled: false
+    morphology_enabled: true
+    morphology_kernel_size: 5
+    morphology_close_iterations: 1
+    morphology_open_iterations: 1
+
+  contour_filter:
+    min_area_px: 1500
+    max_area_ratio: 0.8
+    min_aspect_ratio: 1.2
+    max_aspect_ratio: 2.2
+
+  confidence:
+    min_confidence: 0.35
+    expected_card_area_px: 3200
+    target_aspect_ratio: 1.65
+    aspect_tolerance: 0.55
+    weight_area: 0.35
+    weight_aspect: 0.35
+    weight_rectangularity: 0.30
+
+tracking:
+  candidate_required_frames: 3
+  candidate_max_lost_frames: 2
+  tracking_max_lost_duration_s: 0.5
+  tracking_prediction_enabled: true
+  tracking_match_max_distance_px: 80
+  tracking_velocity_smoothing_alpha: 0.6
+  publish_last_position_during_occlusion: true
+  poll_interval_s: 0.033
+
 logging:
   level: "INFO"
   file: "/opt/cv-card-demo/logs/app.log"

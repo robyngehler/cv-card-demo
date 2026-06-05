@@ -29,6 +29,35 @@ class IdleNoCardState:
                     )
                 return "RECOVERY"
 
+            workspace_service = self.context.services.get("workspace")
+            detector = self.context.services.get("detector")
+
+            try:
+                frame = camera_service.read_frame(timeout_s=0.5)
+                if workspace_service is not None:
+                    workspace_frame = workspace_service.transform(frame)
+                else:
+                    workspace_frame = frame
+
+                if detector is not None:
+                    result = detector.detect(workspace_frame)
+                    self.context.runtime["last_detection"] = {
+                        "visible": result.visible,
+                        "candidates_count": result.candidates_count,
+                        "status": result.status,
+                    }
+                    if result.visible and result.candidate is not None:
+                        self.context.runtime["last_candidate"] = result.candidate
+                        if self.context.logger:
+                            self.context.logger.info(
+                                f"Card candidate detected confidence={result.candidate.confidence:.2f} x_normalized={result.candidate.x_normalized:.2f}"
+                            )
+                        return "CANDIDATE_DETECTED"
+            except Exception as exc:
+                if self.context.logger:
+                    self.context.logger.error(f"Idle detection loop failed: {exc}")
+                return "RECOVERY"
+
             time.sleep(self.poll_interval)
 
     def exit(self):

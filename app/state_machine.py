@@ -1,15 +1,21 @@
 from app.states.boot import BootState
+from app.states.calibration import CalibrationState
+from app.states.candidate_detected import CandidateDetectedState
 from app.states.error_safe import ErrorSafeState
 from app.states.idle import IdleNoCardState
 from app.states.init_cam import InitCamState
 from app.states.recovery import RecoveryState
+from app.states.tracking import TrackingState
 
 
 class StateMachine:
     STATE_CLASSES = {
         "BOOT": BootState,
         "INIT_CAM": InitCamState,
+        "CALIBRATION": CalibrationState,
         "IDLE_NO_CARD": IdleNoCardState,
+        "CANDIDATE_DETECTED": CandidateDetectedState,
+        "TRACKING": TrackingState,
         "RECOVERY": RecoveryState,
         "ERROR_SAFE": ErrorSafeState,
     }
@@ -42,4 +48,4 @@ class StateMachine:
                 self.context.logger.info(
                     f"STATE_TRANSITION old_state={state.name} new_state={next_state} reason=complete"
                 )
-            self.current_state = next_state
+            self.current_state = state.name if next_state is None else next_state
