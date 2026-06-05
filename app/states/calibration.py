@@ -1,0 +1,53 @@
+from app.services.workspace_service import WorkspaceService
+
+
+class CalibrationState:
+    name = "CALIBRATION"
+
+    def __init__(self, context):
+        self.context = context
+
+    def enter(self):
+        self.context.runtime["current_state"] = self.name
+        self.context.runtime["substate"] = "CALIBRATION_ENTER"
+        if self.context.logger:
+            self.context.logger.info("Entering CALIBRATION state")
+
+    def run(self):
+        self.context.runtime["substate"] = "CALIBRATION_LOAD_WORKSPACE_CONFIG"
+        workspace_service = self.context.services.get("workspace")
+        if workspace_service is None:
+            workspace_service = WorkspaceService(self.context)
+            self.context.services["workspace"] = workspace_service
+
+        camera_service = self.context.services.get("camera")
+        if camera_service is None or not getattr(camera_service, "opened", False):
+            if self.context.logger:
+                self.context.logger.error("Camera service is not ready for calibration")
+            return "RECOVERY"
+
+        workspace_config = self.context.config.get("workspace", {})
+        workspace_service.configure(workspace_config)
+
+        try:
+            frame = camera_service.read_frame(timeout_s=1.0)
+            self.context.runtime["substate"] = "CALIBRATION_VALIDATE_WORKSPACE"
+            workspace_service.validate(frame.shape)
+            self.context.runtime["substate"] = "CALIBRATION_READY"
+            if self.context.logger:
+                self.context.logger.info(
+                    f"Workspace ready mode={workspace_service.status.mode} width={workspace_service.status.width} height={workspace_service.status.height}"
+                )
+            return "IDLE_NO_CARD"
+        except ValueError as exc:
+            if self.context.logger:
+                self.context.logger.error(f"Workspace calibration failed: {exc}")
+            return "ERROR_SAFE"
+        except Exception as exc:
+            if self.context.logger:
+                self.context.logger.error(f"Workspace calibration could not read a valid frame: {exc}")
+            return "RECOVERY"
+
+    def exit(self):
+        if self.context.logger:
+            self.context.logger.info("Exiting CALIBRATION state")

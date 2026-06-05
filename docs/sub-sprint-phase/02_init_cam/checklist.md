@@ -6,7 +6,7 @@
 |---|---|
 | Phase ID | `02_init_cam` |
 | Phase Name | `Init Camera` |
-| Status | `IN_PROGRESS` |
+| Status | `DONE` |
 | Owner | TBD |
 | Last Updated | 2026-06-05 |
 
@@ -66,7 +66,7 @@ This phase is complete when:
 - [x] `INIT_CAM` is entered after `BOOT`
 - [x] Camera open/read flow works with a valid device
 - [x] `IDLE_NO_CARD` is reached when the first frame is valid
-- [ ] Repeated failures move the state machine into `RECOVERY`
+- [x] Repeated failures move the state machine into `RECOVERY`
 - [x] Manual test steps are documented
 - [x] Known camera issues are recorded
 
@@ -97,7 +97,8 @@ IDLE_NO_CARD is reached and remains active
 Status:
 
 ```text
-RAN: 
+PASS
+RAN:
 (venv) cetibar@ubuntu:~/workspace/cv-card-demo$ cd /opt/cv-card-demo
 source venv/bin/activate
 python -m app.main --config config/config.yaml --initial-state BOOT
@@ -166,5 +167,6 @@ content-type: application/json
 
 ## Notes
 
-- Current test machine did not have an open `/dev/video0` device.
-- The `BOOT` phase is complete; `INIT_CAM` is currently handling camera availability and retry logic.
+- Local Logitech BRIO camera test succeeded.
+- `/api/health` returns `200 OK` with camera and cv2 status.
+- The `INIT_CAM` phase is complete and the next sprint target is workspace calibration.

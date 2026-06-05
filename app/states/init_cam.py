@@ -50,7 +50,7 @@ class InitCamState:
                 self.context.logger.info(
                     f"Camera frame received shape={frame.shape} cv2={self.camera_service.cv2_version}"
                 )
-                return "IDLE_NO_CARD"
+                return "CALIBRATION"
             except Exception as exc:
                 if self.context.logger:
                     self.context.logger.error(

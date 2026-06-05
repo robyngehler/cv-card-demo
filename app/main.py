@@ -3,9 +3,11 @@ import time
 
 from app.app_context import create_app_context
 from app.config_loader import load_config
+from app.cv.classical_card_detector import ClassicalCardDetector
 from app.logging_setup import init_logging
 from app.services.health_service import HealthService
 from app.services.ui_service import UIService
+from app.services.workspace_service import WorkspaceService
 from app.services.wled_client import WledClient
 from app.state_machine import StateMachine
 
@@ -27,6 +29,8 @@ def main():
 
     ctx.services["health"] = HealthService(ctx)
     ctx.services["ui"] = UIService(ctx)
+    ctx.services["workspace"] = WorkspaceService(ctx)
+    ctx.services["detector"] = ClassicalCardDetector(ctx)
 
     if config.get("wled", {}).get("enabled", False):
         ctx.services["wled"] = WledClient(ctx)

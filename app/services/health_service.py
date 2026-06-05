@@ -13,6 +13,8 @@ class HealthService:
             "services": {
                 "ui": self._ui_status(),
                 "camera": self._camera_status(),
+                "workspace": self._workspace_status(),
+                "detector": self._detector_status(),
                 "cv2": self._cv2_status(),
                 "wled": {"status": self._wled_status()},
             },
@@ -45,6 +47,18 @@ class HealthService:
         if getattr(camera, "frames_read", None) is not None:
             status["frames_read"] = camera.frames_read
         return status
+
+    def _workspace_status(self):
+        workspace = self.context.services.get("workspace")
+        if workspace is None:
+            return {"status": "NOT_INITIALIZED"}
+        return workspace.get_status()
+
+    def _detector_status(self):
+        detector = self.context.services.get("detector")
+        if detector is None:
+            return {"status": "NOT_INITIALIZED"}
+        return detector.get_status()
 
     def _cv2_status(self):
         camera = self.context.services.get("camera")

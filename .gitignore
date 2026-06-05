@@ -9,3 +9,10 @@ env/
 build/
 develop-eggs/
 dist/
+
+# logs
+log*/
+*.log   
+
+# debug
+debug*/

@@ -7,7 +7,7 @@ This file documents relevant camera initialization errors, failures, workarounds
 ## Status
 
 ```text
-IN_PROGRESS
+DONE
 ```
 
 ---
