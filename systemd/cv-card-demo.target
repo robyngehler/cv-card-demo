@@ -1,0 +1,7 @@
+[Unit]
+Description=CV Card Demo Application Stack
+Wants=cv-card-demo-backend.service cv-card-demo-kiosk.service
+After=network-online.target graphical.target
+
+[Install]
+WantedBy=multi-user.target

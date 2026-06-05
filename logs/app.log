@@ -1,0 +1,126 @@
+2026-06-05 13:40:14,120 INFO cv-card-demo Starting state machine in BOOT
+2026-06-05 13:40:14,123 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=BOOT reason=enter
+2026-06-05 13:40:14,125 INFO cv-card-demo Entering BOOT state
+2026-06-05 13:40:14,125 ERROR cv-card-demo UI service failed to start: Config.__init__() got an unexpected keyword argument 'install_signal_handlers'
+2026-06-05 13:40:14,125 INFO cv-card-demo Exiting BOOT state
+2026-06-05 13:40:14,125 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=ERROR_SAFE reason=complete
+2026-06-05 13:40:14,125 INFO cv-card-demo STATE_TRANSITION old_state=ERROR_SAFE new_state=ERROR_SAFE reason=enter
+2026-06-05 13:40:14,125 ERROR cv-card-demo Entering ERROR_SAFE state
+2026-06-05 13:40:14,126 ERROR cv-card-demo Critical error prevented safe startup
+2026-06-05 13:40:14,126 INFO cv-card-demo Exiting ERROR_SAFE state
+2026-06-05 13:41:41,823 INFO cv-card-demo Starting state machine in BOOT
+2026-06-05 13:41:41,824 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=BOOT reason=enter
+2026-06-05 13:41:41,824 INFO cv-card-demo Entering BOOT state
+2026-06-05 13:41:41,826 INFO cv-card-demo UI service started on http://0.0.0.0:8000
+2026-06-05 13:41:41,827 INFO cv-card-demo BOOT complete, transitioning to INIT_CAM
+2026-06-05 13:41:41,827 INFO cv-card-demo Exiting BOOT state
+2026-06-05 13:41:41,827 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=INIT_CAM reason=complete
+2026-06-05 13:41:41,827 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=INIT_CAM reason=enter
+2026-06-05 13:41:41,827 INFO cv-card-demo Entering INIT_CAM state
+2026-06-05 13:41:41,828 INFO cv-card-demo Initializing camera
+2026-06-05 13:41:42,127 INFO cv-card-demo Opening camera device 0
+2026-06-05 13:41:42,129 ERROR cv-card-demo Camera initialization attempt 1/3 failed: Camera device 0 could not be opened
+2026-06-05 13:41:43,130 INFO cv-card-demo Opening camera device 0
+2026-06-05 13:41:43,131 ERROR cv-card-demo Camera initialization attempt 2/3 failed: Camera device 0 could not be opened
+2026-06-05 13:41:44,132 INFO cv-card-demo Opening camera device 0
+2026-06-05 13:41:44,133 ERROR cv-card-demo Camera initialization attempt 3/3 failed: Camera device 0 could not be opened
+2026-06-05 13:41:44,133 INFO cv-card-demo Exiting INIT_CAM state
+2026-06-05 13:41:44,133 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=RECOVERY reason=complete
+2026-06-05 13:41:44,133 INFO cv-card-demo STATE_TRANSITION old_state=RECOVERY new_state=RECOVERY reason=enter
+2026-06-05 13:41:44,134 WARNING cv-card-demo Entering RECOVERY state
+2026-06-05 13:41:44,134 WARNING cv-card-demo Recovery is not implemented; moving to ERROR_SAFE
+2026-06-05 13:41:44,134 INFO cv-card-demo Exiting RECOVERY state
+2026-06-05 13:41:44,134 INFO cv-card-demo STATE_TRANSITION old_state=RECOVERY new_state=ERROR_SAFE reason=complete
+2026-06-05 13:41:44,134 INFO cv-card-demo STATE_TRANSITION old_state=ERROR_SAFE new_state=ERROR_SAFE reason=enter
+2026-06-05 13:41:44,134 ERROR cv-card-demo Entering ERROR_SAFE state
+2026-06-05 13:41:44,134 ERROR cv-card-demo Critical error prevented safe startup
+2026-06-05 13:41:44,134 INFO cv-card-demo Exiting ERROR_SAFE state
+2026-06-05 13:43:23,291 INFO cv-card-demo Starting state machine in BOOT
+2026-06-05 13:43:23,292 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=BOOT reason=enter
+2026-06-05 13:43:23,292 INFO cv-card-demo Entering BOOT state
+2026-06-05 13:43:23,295 INFO cv-card-demo UI service started on http://0.0.0.0:8000
+2026-06-05 13:43:23,295 INFO cv-card-demo BOOT complete, transitioning to INIT_CAM
+2026-06-05 13:43:23,295 INFO cv-card-demo Exiting BOOT state
+2026-06-05 13:43:23,295 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=INIT_CAM reason=complete
+2026-06-05 13:43:23,295 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=INIT_CAM reason=enter
+2026-06-05 13:43:23,295 INFO cv-card-demo Entering INIT_CAM state
+2026-06-05 13:43:23,295 INFO cv-card-demo Initializing camera
+2026-06-05 13:43:23,604 INFO cv-card-demo Opening camera device 0
+2026-06-05 13:43:23,611 ERROR cv-card-demo Camera initialization attempt 1/3 failed: Camera device 0 could not be opened
+2026-06-05 13:43:24,613 INFO cv-card-demo Opening camera device 0
+2026-06-05 13:43:24,614 ERROR cv-card-demo Camera initialization attempt 2/3 failed: Camera device 0 could not be opened
+2026-06-05 13:43:25,614 INFO cv-card-demo Opening camera device 0
+2026-06-05 13:43:25,615 ERROR cv-card-demo Camera initialization attempt 3/3 failed: Camera device 0 could not be opened
+2026-06-05 13:43:25,615 INFO cv-card-demo Exiting INIT_CAM state
+2026-06-05 13:43:25,615 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=RECOVERY reason=complete
+2026-06-05 13:43:25,615 INFO cv-card-demo STATE_TRANSITION old_state=RECOVERY new_state=RECOVERY reason=enter
+2026-06-05 13:43:25,615 WARNING cv-card-demo Entering RECOVERY state
+2026-06-05 13:43:25,616 WARNING cv-card-demo Recovery is not implemented; moving to ERROR_SAFE
+2026-06-05 13:43:25,616 INFO cv-card-demo Exiting RECOVERY state
+2026-06-05 13:43:25,616 INFO cv-card-demo STATE_TRANSITION old_state=RECOVERY new_state=ERROR_SAFE reason=complete
+2026-06-05 13:43:25,616 INFO cv-card-demo STATE_TRANSITION old_state=ERROR_SAFE new_state=ERROR_SAFE reason=enter
+2026-06-05 13:43:25,616 ERROR cv-card-demo Entering ERROR_SAFE state
+2026-06-05 13:43:25,616 ERROR cv-card-demo Critical error prevented safe startup
+2026-06-05 13:43:25,616 INFO cv-card-demo Exiting ERROR_SAFE state
+2026-06-05 13:52:17,017 INFO cv-card-demo Starting state machine in BOOT
+2026-06-05 13:52:17,017 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=BOOT reason=enter
+2026-06-05 13:52:17,017 INFO cv-card-demo Entering BOOT state
+2026-06-05 13:52:17,019 INFO cv-card-demo UI service started on http://0.0.0.0:8000
+2026-06-05 13:52:17,020 INFO cv-card-demo BOOT complete, transitioning to INIT_CAM
+2026-06-05 13:52:17,021 INFO cv-card-demo Exiting BOOT state
+2026-06-05 13:52:17,021 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=INIT_CAM reason=complete
+2026-06-05 13:52:17,021 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=INIT_CAM reason=enter
+2026-06-05 13:52:17,022 INFO cv-card-demo Entering INIT_CAM state
+2026-06-05 13:52:17,022 INFO cv-card-demo Initializing camera
+2026-06-05 13:52:17,303 INFO cv-card-demo Opening camera device 0
+2026-06-05 13:52:17,306 ERROR cv-card-demo Camera initialization attempt 1/3 failed: Camera device 0 could not be opened
+2026-06-05 13:52:18,308 INFO cv-card-demo Opening camera device 0
+2026-06-05 13:52:18,309 ERROR cv-card-demo Camera initialization attempt 2/3 failed: Camera device 0 could not be opened
+2026-06-05 13:52:19,310 INFO cv-card-demo Opening camera device 0
+2026-06-05 13:52:19,311 ERROR cv-card-demo Camera initialization attempt 3/3 failed: Camera device 0 could not be opened
+2026-06-05 13:52:19,311 INFO cv-card-demo Exiting INIT_CAM state
+2026-06-05 13:52:19,311 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=RECOVERY reason=complete
+2026-06-05 13:52:19,311 INFO cv-card-demo STATE_TRANSITION old_state=RECOVERY new_state=RECOVERY reason=enter
+2026-06-05 13:52:19,311 WARNING cv-card-demo Entering RECOVERY state
+2026-06-05 13:52:19,311 WARNING cv-card-demo Recovery is not implemented; moving to ERROR_SAFE
+2026-06-05 13:52:19,311 INFO cv-card-demo Exiting RECOVERY state
+2026-06-05 13:52:19,311 INFO cv-card-demo STATE_TRANSITION old_state=RECOVERY new_state=ERROR_SAFE reason=complete
+2026-06-05 13:52:19,311 INFO cv-card-demo STATE_TRANSITION old_state=ERROR_SAFE new_state=ERROR_SAFE reason=enter
+2026-06-05 13:52:19,311 ERROR cv-card-demo Entering ERROR_SAFE state
+2026-06-05 13:52:19,312 ERROR cv-card-demo Critical error prevented safe startup
+2026-06-05 13:52:19,312 INFO cv-card-demo Exiting ERROR_SAFE state
+2026-06-05 14:36:42,234 INFO cv-card-demo Starting state machine in BOOT
+2026-06-05 14:36:42,234 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=BOOT reason=enter
+2026-06-05 14:36:42,235 INFO cv-card-demo Entering BOOT state
+2026-06-05 14:36:42,236 INFO cv-card-demo UI service started on http://0.0.0.0:8000
+2026-06-05 14:36:42,237 INFO cv-card-demo BOOT complete, transitioning to INIT_CAM
+2026-06-05 14:36:42,237 INFO cv-card-demo Exiting BOOT state
+2026-06-05 14:36:42,237 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=INIT_CAM reason=complete
+2026-06-05 14:36:42,238 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=INIT_CAM reason=enter
+2026-06-05 14:36:42,238 INFO cv-card-demo Entering INIT_CAM state
+2026-06-05 14:36:42,238 INFO cv-card-demo Initializing camera
+2026-06-05 14:36:42,510 INFO cv-card-demo Opening camera device 0
+2026-06-05 14:36:43,606 INFO cv-card-demo Camera frame received shape=(480, 640, 3) cv2=4.13.0
+2026-06-05 14:36:43,607 INFO cv-card-demo Exiting INIT_CAM state
+2026-06-05 14:36:43,607 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=IDLE_NO_CARD reason=complete
+2026-06-05 14:36:43,607 INFO cv-card-demo STATE_TRANSITION old_state=IDLE_NO_CARD new_state=IDLE_NO_CARD reason=enter
+2026-06-05 14:36:43,607 INFO cv-card-demo Entering IDLE_NO_CARD state
+2026-06-05 14:36:43,607 INFO cv-card-demo System is idle and waiting for a card
+2026-06-05 14:36:43,607 INFO cv-card-demo Exiting IDLE_NO_CARD state
+2026-06-05 14:52:05,002 INFO cv-card-demo Starting state machine in BOOT
+2026-06-05 14:52:05,003 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=BOOT reason=enter
+2026-06-05 14:52:05,003 INFO cv-card-demo Entering BOOT state
+2026-06-05 14:52:05,005 INFO cv-card-demo UI service started on http://0.0.0.0:8000
+2026-06-05 14:52:05,005 INFO cv-card-demo BOOT complete, transitioning to INIT_CAM
+2026-06-05 14:52:05,005 INFO cv-card-demo Exiting BOOT state
+2026-06-05 14:52:05,005 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=INIT_CAM reason=complete
+2026-06-05 14:52:05,005 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=INIT_CAM reason=enter
+2026-06-05 14:52:05,006 INFO cv-card-demo Entering INIT_CAM state
+2026-06-05 14:52:05,006 INFO cv-card-demo Initializing camera
+2026-06-05 14:52:05,307 INFO cv-card-demo Opening camera device 0
+2026-06-05 14:52:06,463 INFO cv-card-demo Camera frame received shape=(480, 640, 3) cv2=4.13.0
+2026-06-05 14:52:06,464 INFO cv-card-demo Exiting INIT_CAM state
+2026-06-05 14:52:06,464 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=IDLE_NO_CARD reason=complete
+2026-06-05 14:52:06,464 INFO cv-card-demo STATE_TRANSITION old_state=IDLE_NO_CARD new_state=IDLE_NO_CARD reason=enter
+2026-06-05 14:52:06,464 INFO cv-card-demo Entering IDLE_NO_CARD state
+2026-06-05 14:52:06,464 INFO cv-card-demo System is idle and waiting for a card

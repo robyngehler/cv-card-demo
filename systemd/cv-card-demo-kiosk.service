@@ -1,0 +1,23 @@
+[Unit]
+Description=CV Card Demo Local Kiosk Browser
+After=graphical.target cv-card-demo-backend.service
+Wants=cv-card-demo-backend.service
+
+[Service]
+Type=simple
+User=demo
+Group=demo
+
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/demo/.Xauthority
+
+ExecStart=/opt/cv-card-demo/scripts/run_kiosk.sh
+
+Restart=always
+RestartSec=3
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target

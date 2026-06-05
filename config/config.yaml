@@ -1,0 +1,36 @@
+app:
+  name: "cv-card-demo"
+  version: "0.1.0"
+  initial_state: "BOOT"
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  ui_static_dir: "./app/web"
+
+boot:
+  next_state: "INIT_CAM"
+  max_boot_duration_s: 10
+  allow_degraded_wled: true
+
+logging:
+  level: "INFO"
+  file: "./logs/app.log"
+  log_to_console: true
+  log_to_file: true
+
+camera:
+  init_in_boot: false
+  preferred_backend: "opencv"
+  device_index: 0
+  width: 1280
+  height: 720
+  fps: 30
+  retry_attempts: 3
+  idle_poll_interval: 0.5
+
+wled:
+  enabled: false
+  host: ""
+  timeout_ms: 300
+  fail_mode: "optional"
