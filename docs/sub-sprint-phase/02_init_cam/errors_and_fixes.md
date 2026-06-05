@@ -11,6 +11,54 @@ IN_PROGRESS
 ```
 
 ---
+## 2026-06-05 – `/api/health` returned 404 during INIT_CAM verification
+
+### Context
+
+- state: `INIT_CAM` / `IDLE_NO_CARD`
+- service: `ui_service`
+- command: `curl http://localhost:8000/api/health`
+
+### Observed Behavior
+
+`/api/health` returned `404 Not Found` although health endpoint should be available.
+
+### Expected Behavior
+
+`/api/health` returns HTTP `200` with JSON containing state and service status.
+
+### Suspected Cause
+
+`StaticFiles` was mounted on `/` before API route registration, so the root static app shadowed API routes.
+
+### Fix Applied
+
+- Moved `self.app.mount("/", StaticFiles(...))` to the end of `UIService._setup_routes()`.
+- Restarted backend process and re-ran endpoint check.
+
+### Verification
+
+Command:
+
+```bash
+source venv/bin/activate
+curl -i http://localhost:8000/api/health
+```
+
+Expected/observed result:
+
+```text
+HTTP/1.1 200 OK
+... JSON with state=IDLE_NO_CARD, camera.status=OK, cv2.status=OK
+```
+
+### Status
+
+```text
+FIXED
+```
+
+---
 ## 2026-06-05 – IDLE_NO_CARD exited immediately after enter
 
 ### Context
