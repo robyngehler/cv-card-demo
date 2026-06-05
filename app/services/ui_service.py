@@ -13,6 +13,7 @@ class UIService:
         self.active_score_connections = []
         self.server = None
         self.thread = None
+        self.event_loop = None
         self._setup_routes()
 
     def _setup_routes(self):
@@ -79,6 +80,30 @@ class UIService:
 
         if self.context.logger:
             self.context.logger.info(f"UI service started on http://{host}:{port}")
+
+    def publish_score(self, score):
+        """
+        Publish a score update to all connected score WebSocket clients.
+        
+        This method provides a synchronous interface to the async broadcast_score.
+        It's safe to call from the state machine's synchronous context.
+        
+        Args:
+            score (dict): Score data with keys like visible, score, x_normalized, confidence, state, source
+        """
+        if self.server and not self.server.should_exit and getattr(self.server, "server", None):
+            # Try to schedule broadcast on the server's event loop
+            try:
+                # Create a new coroutine to broadcast
+                coro = self.broadcast_score(score)
+                
+                # Try to run it in the server's event loop
+                # This is a best-effort approach; if the loop is busy, we may lose updates
+                asyncio.run_coroutine_threadsafe(coro, self.server.server.loop)
+            except Exception as e:
+                # Non-critical: WebSocket publish is best-effort
+                if self.context.logger:
+                    self.context.logger.debug(f"UI score publish failed (non-critical): {e}")
 
     async def broadcast_status(self, message):
         payload = {"type": "system_status", "message": message}

@@ -8,8 +8,29 @@
 </head>
 <body>
   <div class="page">
-    <h1>CV Card Demo</h1>
-    <div id="status">Starting...</div>
+    <div class="panel">
+      <p class="eyebrow">CV Card Demo</p>
+      <h1>Live Card Tracking</h1>
+      <div id="status" class="status">System starting...</div>
+      <div class="meter" aria-label="Live score">
+        <div id="meter-fill" class="meter-fill"></div>
+      </div>
+      <div class="score-row">
+        <div>
+          <div class="label">Score</div>
+          <div id="score-value" class="score-value">--</div>
+        </div>
+        <div>
+          <div class="label">Source</div>
+          <div id="source-value" class="detail-value">waiting</div>
+        </div>
+        <div>
+          <div class="label">State</div>
+          <div id="state-value" class="detail-value">BOOT</div>
+        </div>
+      </div>
+      <div id="detail-line" class="detail-line">No score yet.</div>
+    </div>
   </div>
   <script src="app.js"></script>
 </body>

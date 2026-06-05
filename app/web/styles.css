@@ -1,19 +1,96 @@
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
-  background: #121212;
-  color: #f0f0f0;
+  font-family: "Segoe UI", sans-serif;
+  background: linear-gradient(180deg, #171a1f 0%, #0f1216 100%);
+  color: #f3f5f7;
 }
 
 .page {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100vh;
-  text-align: center;
+  padding: 24px;
+}
+
+.panel {
+  width: min(720px, 100%);
+  padding: 32px;
+  border-radius: 24px;
+  background: rgba(24, 29, 36, 0.88);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.75rem;
+  color: #9db1bf;
 }
 
 h1 {
-  margin-bottom: 1rem;
+  margin: 0 0 16px;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+}
+
+.status {
+  margin-bottom: 20px;
+  font-size: 1.05rem;
+  color: #dce5eb;
+}
+
+.meter {
+  height: 28px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.meter-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #5aa9e6 0%, #8de969 100%);
+  transition: width 120ms linear, opacity 120ms linear;
+  opacity: 0.2;
+}
+
+.score-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.label {
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8ca0ae;
+}
+
+.score-value {
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  font-weight: 700;
+}
+
+.detail-value {
+  font-size: 1.15rem;
+}
+
+.detail-line {
+  margin-top: 18px;
+  color: #a8bac6;
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: 24px;
+  }
+
+  .score-row {
+    grid-template-columns: 1fr;
+  }
 }
