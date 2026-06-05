@@ -17,7 +17,6 @@ class UIService:
 
     def _setup_routes(self):
         ui_dir = self.context.config.get("server", {}).get("ui_static_dir", "./app/web")
-        self.app.mount("/", StaticFiles(directory=ui_dir, html=True), name="web")
 
         @self.app.get("/api/health")
         async def health():
@@ -56,6 +55,9 @@ class UIService:
                     await asyncio.sleep(10)
             except WebSocketDisconnect:
                 self.active_score_connections.remove(websocket)
+
+        # Register static web app last so API and WS routes are not shadowed.
+        self.app.mount("/", StaticFiles(directory=ui_dir, html=True), name="web")
 
     def start(self):
         if self.thread and self.thread.is_alive():
