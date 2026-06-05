@@ -7,8 +7,9 @@ Each phase should have its own folder:
 ```text
 docs/sub-sprint-phase/01_boot/
 docs/sub-sprint-phase/02_init_cam/
-docs/sub-sprint-phase/03_ui_service/
-...
+docs/sub-sprint-phase/03_workspace_calibration/
+docs/sub-sprint-phase/04_card_detection/
+docs/sub-sprint-phase/06_tracking_stability/
 ```
 
 Each phase folder must contain:
