@@ -1,3 +1,6 @@
+import time
+
+
 class ErrorSafeState:
     name = "ERROR_SAFE"
 
@@ -13,6 +16,7 @@ class ErrorSafeState:
     def run(self):
         if self.context.logger:
             self.context.logger.error("Critical error prevented safe startup")
+        time.sleep(1.0)
         return None
 
     def exit(self):

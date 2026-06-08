@@ -5,6 +5,7 @@ from app.app_context import create_app_context
 from app.config_loader import load_config
 from app.logging_setup import init_logging
 from app.services.candidate_precheck_service import CandidatePrecheckService
+from app.services.camera_control_service import CameraControlService
 from app.services.card_detector_service import CardDetectorService
 from app.services.health_service import HealthService
 from app.services.fusion_tracker_service import CardHandFusionTracker
@@ -51,6 +52,7 @@ def main():
     ctx.register_service("snapshot", SnapshotService(ctx))
     ctx.register_service("snapshot_processing", SnapshotProcessingService(ctx))
     ctx.register_service("candidate_precheck", CandidatePrecheckService(ctx))
+    ctx.register_service("camera_control", CameraControlService(ctx))
 
     if config.get("wled", {}).get("enabled", False):
         ctx.register_service("wled", WledClient(ctx))

@@ -1,5 +1,7 @@
 import time
 
+from app.utils.frame_scaling import make_live_frame
+
 
 class TrackingState:
     """
@@ -59,12 +61,23 @@ class TrackingState:
         
         # Read frame
         try:
-            frame = camera.read_frame(timeout_s=0.5)
+            t0 = time.perf_counter()
+            # frame = camera.read_frame(timeout_s=0.5)
+            full_frame = camera.read_frame(timeout_s=0.5)
+            t1 = time.perf_counter()
+            frame, scale_x, scale_y = make_live_frame(full_frame, self.context.config)
+            t_resize = time.perf_counter()
             if frame is None:
                 if self.context.logger:
                     self.context.logger.warning("TRACKING: No frame available (camera lost?)")
                 return "IDLE_NO_CARD"
-            self.context.runtime["last_frame"] = frame
+            #self.context.runtime["last_frame"] = frame
+            self.context.runtime["last_frame"] = full_frame
+            self.context.runtime["last_live_frame"] = frame
+            self.context.runtime["live_to_full_scale"] = {
+                "x": scale_x,
+                "y": scale_y,
+            }
         except Exception as e:
             if self.context.logger:
                 self.context.logger.warning(f"TRACKING: Camera read failed: {e}")
@@ -73,6 +86,7 @@ class TrackingState:
         # Detect card
         try:
             result = detector.detect(frame, state_name=self.name)
+            t2 = time.perf_counter()
         except Exception as e:
             if self.context.logger:
                 self.context.logger.warning(f"TRACKING: Detection failed: {e}")
@@ -91,12 +105,15 @@ class TrackingState:
         if matched_candidate is not None:
             self.context.runtime["last_candidate"] = matched_candidate
             card_measurement = matched_candidate
-            self.context.runtime["last_card_measurement"] = matched_candidate
+            self.context.runtime["last_card_measurement"] = card_measurement
+        else:
+            self.context.runtime["last_card_measurement"] = None
 
         hand_measurement = None
         if hand_tracker is not None:
             hand_measurement = hand_tracker.detect(frame, now=now)
         self.context.runtime["last_hand_measurement"] = hand_measurement
+        t3 = time.perf_counter()
 
         session = self.context.runtime.get("session", {})
         if questionnaire is not None and not session.get("session_id") and card_measurement is not None:
@@ -115,6 +132,36 @@ class TrackingState:
             hand_measurement,
             now=now,
         )
+        t4 = time.perf_counter()
+        if self.context.logger:
+            self.context.logger.info(
+                "TRACKING_DEBUG "
+                f"det_visible={result.visible} "
+                f"det_cached={getattr(result, 'cached', None)} "
+                f"det_candidates={getattr(result, 'candidates_count', None)} "
+                f"matched_card={matched_candidate is not None} "
+                f"card_measurement={card_measurement is not None} "
+                f"card_source={getattr(card_measurement, 'source', None)} "
+                f"hand_visible={bool(hand_measurement is not None and hand_measurement.visible)} "
+                f"hand_valid={bool(hand_measurement is not None and hand_measurement.valid)} "
+                f"hand_reason={getattr(hand_measurement, 'reason', None)} "
+                f"fusion_visible={fusion_measurement.visible} "
+                f"fusion_state={fusion_measurement.fusion_state} "
+                f"fusion_source={fusion_measurement.source} "
+                f"fusion_score={fusion_measurement.score}"
+            )
+            self.context.logger.info(
+                "TRACKING_TIMING "
+                f"full_shape={full_frame.shape} "
+                f"live_shape={frame.shape} "
+                f"read_ms={(t1-t0)*1000:.1f} "
+                f"resize_ms={(t_resize-t1)*1000:.1f} "
+                f"card_ms={(t2-t_resize)*1000:.1f} "
+                f"hand_ms={(t3-t2)*1000:.1f} "
+                f"fusion_ms={(t4-t3)*1000:.1f} "
+                f"total_ms={(t4-t0)*1000:.1f}"
+            )       
+
         self.context.runtime["last_fusion_measurement"] = fusion_measurement
         self.context.runtime.setdefault("tracking", {})["source"] = fusion_measurement.source
         self.context.runtime.setdefault("tracking", {})["fusion_state"] = fusion_measurement.fusion_state
@@ -150,6 +197,33 @@ class TrackingState:
 
         time.sleep(self.poll_interval)
         return None
+
+    def _scale_card_measurement_to_full_frame(self, card_measurement, scale_x: float, scale_y: float):
+        if card_measurement is None:
+            return None
+
+        if scale_x == 1.0 and scale_y == 1.0:
+            return card_measurement
+
+        import copy
+
+        scaled = copy.copy(card_measurement)
+
+        if getattr(card_measurement, "bbox_points", None):
+            scaled.bbox_points = [
+                (point[0] * scale_x, point[1] * scale_y)
+                for point in card_measurement.bbox_points
+            ]
+
+        if getattr(card_measurement, "x", None) is not None:
+            scaled.x = card_measurement.x * scale_x
+
+        if getattr(card_measurement, "y", None) is not None:
+            scaled.y = card_measurement.y * scale_y
+
+        setattr(scaled, "coordinate_space", "full_frame")
+
+        return scaled
 
     def _publish_score(
         self,

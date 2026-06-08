@@ -1,5 +1,7 @@
 import time
 
+from app.utils.frame_scaling import make_live_frame
+
 
 class IdleNoCardState:
     name = "IDLE_NO_CARD"
@@ -34,8 +36,14 @@ class IdleNoCardState:
             ui_service = self.context.get_service("ui", default=None)
 
             try:
-                frame = camera_service.read_frame(timeout_s=0.5)
-                self.context.runtime["last_frame"] = frame
+                full_frame = camera_service.read_frame(timeout_s=0.5)
+                frame, scale_x, scale_y = make_live_frame(full_frame, self.context.config)
+                self.context.runtime["last_frame"] = full_frame
+                self.context.runtime["last_live_frame"] = frame
+                self.context.runtime["live_to_full_scale"] = {
+                    "x": scale_x,
+                    "y": scale_y,
+                }
 
                 if detector is not None:
                     result = detector.detect(frame, state_name=self.name)
@@ -43,7 +51,7 @@ class IdleNoCardState:
                     if result.visible and result.candidate is not None and result.candidate.is_business_card:
                         self.context.runtime["last_candidate"] = result.candidate
                         self.context.runtime["last_card_measurement"] = result.candidate
-                        self.context.runtime["last_candidate_frame"] = frame
+                        self.context.runtime["last_candidate_frame"] = full_frame
                         if self.context.logger:
                             self.context.logger.info(
                                 "Business-card candidate detected "

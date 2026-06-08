@@ -4,6 +4,7 @@ import math
 import time
 from typing import Any, Dict, Optional, Tuple
 
+from app.services.workspace_service import WorkspaceService
 from app.cv.hand_tracking import HandMeasurement, HandProxyEstimator, MediaPipeHandDetector
 
 
@@ -57,7 +58,7 @@ class MediaPipeHandTracker:
         card_point = workspace.translate_point(proxy_point, from_workspace="hand", to_workspace="card")
         normalized = workspace.normalize_point(card_point, workspace_name="card")
         validity_reason = self._validate_proxy(landmark_points, card_point, normalized, timestamp, workspace)
-        confidence = self._extract_handedness_confidence(results)
+        # confidence = raw_measurement.confidence # not used anymore
         valid = validity_reason is None
         if valid:
             self._last_proxy_norm = (normalized["x"], normalized["y"])

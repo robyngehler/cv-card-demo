@@ -32,6 +32,7 @@ class HealthService:
                 "hand_tracker": self._generic_service_status("hand_tracker"),
                 "fusion_tracker": self._generic_service_status("fusion_tracker"),
                 "candidate_precheck": self._generic_service_status("candidate_precheck"),
+                "camera_control": self._generic_service_status("camera_control"),
                 "questionnaire": self._generic_service_status("questionnaire"),
                 "snapshot": self._generic_service_status("snapshot"),
                 "snapshot_processing": self._generic_service_status("snapshot_processing"),

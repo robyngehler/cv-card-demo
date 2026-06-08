@@ -12,6 +12,7 @@ docs/sub-sprint-phase/04_card_detection/
 docs/sub-sprint-phase/06_tracking_stability/
 docs/sub-sprint-phase/07_tracking_advances/
 docs/sub-sprint-phase/08_state_and_persistence_advances/
+docs/sub-sprint-phase/09_frontend_interaction_console/
 ```
 
 Each phase folder must contain:

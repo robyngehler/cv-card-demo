@@ -12,7 +12,8 @@
 | 06 Tracking Stability | IN_PROGRESS | Hold tracking through short occlusions and candidate ambiguity |
 | 07 Recovery | NOT_STARTED | Recover from camera/backend failures |
 | 08 Deployment | IN_PROGRESS | systemd autostart and kiosk mode |
-| 09 WLED Output | OPTIONAL | Add optional ESP32/WLED LED output |
+| 09 Frontend Interaction Console | IN_PROGRESS | Deliver Questionnaire/Debug/Control tabs with camera tuning and runtime diagnostics |
+| 10 WLED Output | OPTIONAL | Add optional ESP32/WLED LED output |
 
 ## MVP Acceptance Criteria
 
@@ -52,6 +53,8 @@ Install optional tracking/OCR/vector backends on the target environment and veri
 
 | Date | Change | Status |
 |---|---|---|
+| 2026-06-08 | Implemented Sprint 09 tabbed frontend (Questionnaire/Debug/Control), frontend state store + timeline, tab-scoped debug frame refresh, and backend camera control endpoints/service | DONE |
+| 2026-06-08 | Unified live-processing frame scaling across idle/candidate/tracking states and aligned calibration workspace validation to live-frame dimensions | DONE |
 | 2026-06-07 | Moved YOLO, hand tracking, and fusion logic into CV engine modules and split snapshot processing from capture responsibilities | DONE |
 | 2026-06-07 | Added candidate identity precheck before session start, resume-aware questionnaire session handling, and removed artificial card predictions from `TRACKING` | DONE |
 | 2026-06-07 | Added persistence merge handling, answer candidate links, prefixed deterministic candidate IDs, vector history point IDs, and CLIP-first image embedding path with fallback status | DONE |

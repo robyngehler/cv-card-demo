@@ -1,4 +1,7 @@
 import time
+from turtle import width
+
+import cv2
 
 
 class CameraService:
@@ -24,15 +27,60 @@ class CameraService:
     def open(self):
         cv2 = self.probe_cv2()
         camera_config = self.context.config.get("camera", {})
+
         device_index = int(camera_config.get("device_index", 0))
+        width = int(camera_config.get("width", 1280))
+        height = int(camera_config.get("height", 720))
+        fps = float(camera_config.get("fps", 30))
+        fourcc = camera_config.get("fourcc", "MJPG")
+        backend_name = str(camera_config.get("preferred_backend", "opencv")).lower()
+
         self.device_index = device_index
-        self.context.logger.info(f"Opening camera device {device_index}")
-        capture = cv2.VideoCapture(device_index)
+        self.context.logger.info(
+            f"Opening camera device {device_index} requested={width}x{height}@{fps} fourcc={fourcc}"
+        )
+
+        if backend_name == "v4l2":
+            capture = cv2.VideoCapture(device_index, cv2.CAP_V4L2)
+        else:
+            capture = cv2.VideoCapture(device_index)
+
         if not capture.isOpened():
             raise RuntimeError(f"Camera device {device_index} could not be opened")
 
+        # Important for Logitech BRIO: set MJPG before resolution/fps.
+        if fourcc:
+            capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
+
+            capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            capture.set(cv2.CAP_PROP_FPS, fps)
+
+        # Read one frame after setting properties, so the driver actually applies them.
+        ret, frame = capture.read()
+        if not ret or frame is None:
+            capture.release()
+            raise RuntimeError("Camera opened but did not return a valid frame after configuration")
+
+        actual_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        actual_fps = capture.get(cv2.CAP_PROP_FPS)
+        actual_fourcc_int = int(capture.get(cv2.CAP_PROP_FOURCC))
+        actual_fourcc = "".join(
+            chr((actual_fourcc_int >> (8 * i)) & 0xFF)
+            for i in range(4)
+        )
+
         self.capture = capture
         self.opened = True
+        self.frame_shape = frame.shape
+
+        self.context.logger.info(
+            f"Camera configured requested={width}x{height}@{fps} fourcc={fourcc} "
+            f"actual={actual_width}x{actual_height}@{actual_fps} fourcc={actual_fourcc} "
+            f"first_frame_shape={frame.shape}"
+        )
+
         return capture
 
     def read_frame(self, timeout_s=2.0):

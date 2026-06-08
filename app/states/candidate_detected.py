@@ -1,5 +1,7 @@
 import time
 
+from app.utils.frame_scaling import make_live_frame
+
 
 class CandidateDetectedState:
     name = "CANDIDATE_DETECTED"
@@ -61,12 +63,18 @@ class CandidateDetectedState:
         ui_service = self.context.get_service("ui", default=None)
         
         # Read frame with timeout
-        frame = camera.read_frame(timeout_s=0.5)
-        if frame is None:
+        full_frame = camera.read_frame(timeout_s=0.5)
+        if full_frame is None:
             if self.context.logger:
                 self.context.logger.warning("CANDIDATE_DETECTED: No frame available (camera lost?)")
             return "IDLE_NO_CARD"
-        self.context.runtime["last_frame"] = frame
+        frame, scale_x, scale_y = make_live_frame(full_frame, self.context.config)
+        self.context.runtime["last_frame"] = full_frame
+        self.context.runtime["last_live_frame"] = frame
+        self.context.runtime["live_to_full_scale"] = {
+            "x": scale_x,
+            "y": scale_y,
+        }
         
         # Run detector
         try:
@@ -87,10 +95,10 @@ class CandidateDetectedState:
             self.last_detection = result.candidate
             self.context.runtime["last_candidate"] = result.candidate
             self.context.runtime["last_card_measurement"] = result.candidate
-            self.context.runtime["last_candidate_frame"] = frame
+            self.context.runtime["last_candidate_frame"] = full_frame
             if self.best_candidate is None or result.candidate.confidence >= self.best_candidate.confidence:
                 self.best_candidate = result.candidate
-                self.best_frame = frame
+                self.best_frame = full_frame
             
             if self.context.logger:
                 self.context.logger.debug(

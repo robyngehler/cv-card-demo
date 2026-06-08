@@ -490,6 +490,12 @@ class CardHandFusionTracker:
     def _emit_card(self, card_measurement: CardPose, *, fusion_state: str, timestamp: float) -> FusionMeasurement:
         raw_score = self._card_score(card_measurement)
         score = raw_score if self.displayed_score is None else self._smooth_score(raw_score, fusion_state=fusion_state)
+        debug={
+            "detector_source": card_measurement.source,
+            "raw_card_score": raw_score,
+            "displayed_score_before": self.displayed_score,
+            "card_to_score_offset": self.card_to_score_offset,
+}
         return self._emit(
             visible=True,
             score=score,
@@ -497,7 +503,7 @@ class CardHandFusionTracker:
             source=card_measurement.source or "card_detector",
             confidence=float(card_measurement.confidence),
             timestamp=timestamp,
-            debug={"detector_source": card_measurement.source},
+            debug=debug,
         )
 
     def _emit(

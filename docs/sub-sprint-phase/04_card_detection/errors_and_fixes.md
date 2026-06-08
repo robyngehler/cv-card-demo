@@ -10,7 +10,55 @@ DETECTOR_SCORING_RECALIBRATED
 
 | Date | Issue | Status | Notes |
 |---|---|---|---|
+| 2026-06-08 | Live processing frame mismatch across states caused workspace misalignment after 4K camera switch | FIXED | `IDLE_NO_CARD` and `CANDIDATE_DETECTED` now use shared live-frame scaling before detector calls |
 | 2026-06-05 | Real-camera confidence still needs one validation pass after scoring rewrite | OPEN | See Phase 06 for tracking-specific behavior |
+
+## 2026-06-08 - Workspace Coordinate Drift After 4K Camera Upgrade
+
+### Context
+
+- states: `IDLE_NO_CARD`, `CANDIDATE_DETECTED`, `TRACKING`
+- services: `detector`, `workspace`, `snapshot`
+- config: camera full frame `3840x2160`, live processing frame `1920x1080`
+
+### Observed Behavior
+
+Candidate detection appeared briefly in idle and then quickly dropped in candidate confirmation.
+
+### Expected Behavior
+
+All live detector states should evaluate the same coordinate space so candidate confirmation remains stable.
+
+### Suspected Cause
+
+`TRACKING` resized camera frames to live-processing size before detection, while `IDLE_NO_CARD` and `CANDIDATE_DETECTED` used raw full-resolution frames with workspace rectangles configured for live-frame coordinates.
+
+### Fix Applied
+
+- Added shared helper `app/utils/frame_scaling.py::make_live_frame`.
+- Updated `IDLE_NO_CARD`, `CANDIDATE_DETECTED`, and `TRACKING` to use the same helper before detector execution.
+- Standardized runtime fields per frame loop: `last_frame` (full), `last_live_frame` (live), `live_to_full_scale`.
+- Updated calibration validation to validate workspace bounds against live-frame dimensions.
+
+### Verification
+
+Checks:
+
+```text
+VS Code diagnostics (get_errors) on updated files
+```
+
+Expected/observed result:
+
+```text
+No errors found in updated state/helper files.
+```
+
+### Status
+
+```text
+FIXED
+```
 
 ## 2026-06-05 – Detector Confidence Too Fragile
 

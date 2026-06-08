@@ -1,4 +1,7 @@
+from app.services import camera_service
+from app.services import workspace_service
 from app.services.workspace_service import WorkspaceService
+from app.utils.frame_scaling import make_live_frame
 
 
 class CalibrationState:
@@ -31,13 +34,34 @@ class CalibrationState:
 
         try:
             frame = camera_service.read_frame(timeout_s=1.0)
+            if frame is None:
+                raise RuntimeError("Camera returned no frame during calibration")
+
+            live_frame, scale_x, scale_y = make_live_frame(frame, self.context.config)
+            self.context.runtime["last_frame"] = frame
+            self.context.runtime["last_live_frame"] = live_frame
+            self.context.runtime["live_to_full_scale"] = {
+                "x": scale_x,
+                "y": scale_y,
+            }
+
             self.context.runtime["substate"] = "CALIBRATION_VALIDATE_WORKSPACE"
-            workspace_service.validate(frame.shape)
+            workspace_service.validate(live_frame.shape)
             self.context.runtime["substate"] = "CALIBRATION_READY"
+
             if self.context.logger:
+                workspace_status = workspace_service.get_status()
+                workspaces = workspace_status.get("workspaces", {})
+                card = workspaces.get("card", {})
+                hand = workspaces.get("hand", {})
+
                 self.context.logger.info(
-                    f"Workspace ready mode={workspace_service.status.mode} width={workspace_service.status.width} height={workspace_service.status.height}"
+                    "Workspace ready "
+                    f"status={workspace_status.get('status')} "
+                    f"card={card.get('width')}x{card.get('height')} "
+                    f"hand={hand.get('width')}x{hand.get('height')}"
                 )
+
             return "IDLE_NO_CARD"
         except ValueError as exc:
             if self.context.logger:

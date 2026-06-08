@@ -1,6 +1,8 @@
 import asyncio
 import threading
+import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Body
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from uvicorn import Config, Server
@@ -29,9 +31,12 @@ class UIService:
             session = self.context.runtime.get("session", {})
             tracking = self.context.runtime.get("tracking", {})
             last_fusion = self.context.runtime.get("last_fusion_measurement")
+            last_card = self.context.runtime.get("last_card_measurement")
+            last_hand = self.context.runtime.get("last_hand_measurement")
             return {
                 "state": self.context.runtime.get("current_state"),
                 "substate": self.context.runtime.get("substate"),
+                "timestamp": time.time(),
                 "session": {
                     "session_id": session.get("session_id"),
                     "candidate_id": session.get("candidate_id"),
@@ -39,11 +44,35 @@ class UIService:
                     "current_question_id": session.get("current_question_id"),
                     "phase": session.get("phase"),
                     "completed": session.get("completed"),
+                    "question_index": session.get("question_index"),
                 },
                 "tracking": {
                     "source": tracking.get("source"),
                     "fusion_state": tracking.get("fusion_state"),
                     "last_score": getattr(last_fusion, "score", None),
+                    "last_rating": getattr(last_fusion, "rating", None),
+                    "visible": getattr(last_fusion, "visible", False),
+                    "confidence": getattr(last_fusion, "confidence", None),
+                },
+                "card": {
+                    "visible": bool(last_card is not None and getattr(last_card, "visible", False)),
+                    "x": getattr(last_card, "x", None),
+                    "y": getattr(last_card, "y", None),
+                    "x_normalized": getattr(last_card, "x_normalized", None),
+                    "confidence": getattr(last_card, "confidence", None),
+                    "source": getattr(last_card, "source", None),
+                    "bbox_points": getattr(last_card, "bbox_points", None),
+                },
+                "hand": {
+                    "visible": bool(last_hand is not None and getattr(last_hand, "visible", False)),
+                    "valid": bool(last_hand is not None and getattr(last_hand, "valid", False)),
+                    "proxy_x": getattr(last_hand, "proxy_x", None),
+                    "proxy_y": getattr(last_hand, "proxy_y", None),
+                    "proxy_x_normalized": getattr(last_hand, "proxy_x_normalized", None),
+                    "proxy_y_normalized": getattr(last_hand, "proxy_y_normalized", None),
+                    "landmark_count": len(getattr(last_hand, "landmarks", {}) or {}),
+                    "confidence": getattr(last_hand, "confidence", None),
+                    "reason": getattr(last_hand, "reason", None),
                 },
             }
 
@@ -60,6 +89,50 @@ class UIService:
                 "app": self.context.config.get("app", {}).get("name", "cv-card-demo"),
                 "version": self.context.config.get("app", {}).get("version", "0.1.0"),
             }
+
+        @self.app.get("/api/camera/settings")
+        async def camera_settings():
+            service = self.context.get_service("camera_control", default=None)
+            if service is None:
+                return {
+                    "status": "NOT_INITIALIZED",
+                    "settings": {},
+                    "last_error": "camera_control_service_missing",
+                }
+            return service.get_settings()
+
+        @self.app.get("/api/camera/capabilities")
+        async def camera_capabilities():
+            service = self.context.get_service("camera_control", default=None)
+            if service is None:
+                return {
+                    "status": "NOT_INITIALIZED",
+                    "settings": {},
+                    "last_error": "camera_control_service_missing",
+                }
+            return service.get_capabilities()
+
+        @self.app.post("/api/camera/settings")
+        async def camera_apply_settings(payload: dict = Body(default_factory=dict)):
+            service = self.context.get_service("camera_control", default=None)
+            if service is None:
+                return {
+                    "status": "NOT_INITIALIZED",
+                    "applied": {},
+                    "rejected": {k: "camera_control_service_missing" for k in payload.keys()},
+                    "last_error": "camera_control_service_missing",
+                }
+            return service.apply_settings(payload or {})
+
+        @self.app.post("/api/camera/restart")
+        async def camera_restart():
+            service = self.context.get_service("camera_control", default=None)
+            if service is None:
+                return {
+                    "status": "NOT_INITIALIZED",
+                    "last_error": "camera_control_service_missing",
+                }
+            return service.restart_camera()
 
         @self.app.websocket("/ws/status")
         async def websocket_status(websocket: WebSocket):

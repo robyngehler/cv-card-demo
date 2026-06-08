@@ -106,7 +106,11 @@ def main():
             debug_frame = detector.draw_debug(workspace_frame, result)
 
             # Show info overlay
-            info_text = f"Visible: {result.visible} | Confidence: {result.candidate.confidence:.3f if result.candidate else 0.0:.3f} | Candidates: {result.candidates_count}"
+            info_text = (
+                f"Visible: {result.visible} | "
+                f"Confidence: {(result.candidate.confidence if result.candidate is not None else 0.0):.3f} | "
+                f"Candidates: {result.candidates_count}"
+            )
             cv2.putText(
                 debug_frame,
                 info_text,

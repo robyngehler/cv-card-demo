@@ -8,7 +8,7 @@
 | Phase Name | `Card Detection` |
 | Status | `IN_PROGRESS` |
 | Owner | TBD |
-| Last Updated | 2026-06-06 |
+| Last Updated | 2026-06-08 |
 
 ## Goal
 
@@ -43,6 +43,7 @@ This phase explicitly does not include:
 - [x] Add detector service abstraction for future YOLO integration
 - [x] Keep implementation local and dependency-light
 - [x] Make `CANDIDATE_DETECTED` detector-driven and business-card-only
+- [x] Unify live-frame scaling across `IDLE_NO_CARD`, `CANDIDATE_DETECTED`, and `TRACKING`
 - [x] Update `errors_and_fixes.md`
 - [x] Update `docs/global_checklist.md`
 

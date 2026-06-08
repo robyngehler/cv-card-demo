@@ -20,12 +20,28 @@ class SnapshotProcessingService:
         extraction = ocr_service.process_snapshot(snapshot_record.image_path, snapshot_record.crop_path)
         raw_text = extraction.get("raw_text", "")
 
+        self.context.logger.info(
+            "SNAPSHOT_OCR "
+            f"snapshot_id={snapshot_record.snapshot_id} "
+            f"status={extraction.get('status')} "
+            f"raw_text_len={len(raw_text)} "
+            f"metadata_confidence={extraction.get('metadata_confidence')}"
+)
+    
         final_candidate_id = snapshot_record.candidate_id
         if identity is not None and persistence is not None:
             decision = identity.match_candidate(
                 extraction,
                 persistence_service=persistence,
                 vector_service=vector,
+            )
+            self.context.logger.info(
+                "SNAPSHOT_IDENTITY "
+                f"snapshot_id={snapshot_record.snapshot_id} "
+                f"matched_on={decision.matched_on} "
+                f"status={decision.identity_status} "
+                f"candidate_id={decision.candidate_id} "
+                f"needs_review={decision.needs_review}"
             )
             extraction["identity_decision"] = asdict(decision)
             extraction["email_hash"] = decision.debug.get("email_hash")
