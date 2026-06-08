@@ -9,15 +9,38 @@
 <body>
   <div class="page">
     <div class="panel">
-      <p class="eyebrow">CV Card Demo</p>
-      <h1>Live Card Tracking</h1>
-      <div id="status" class="status">System starting...</div>
-      <div class="meter" aria-label="Live score">
-        <div id="meter-fill" class="meter-fill"></div>
+      <div class="hero-row">
+        <div>
+          <p class="eyebrow">CV Card Demo</p>
+          <h1 id="question-label">Place a business card to begin</h1>
+          <div id="status" class="status">System starting...</div>
+        </div>
+        <div class="badge-stack">
+          <div class="badge">
+            <span class="badge-label">Fusion</span>
+            <strong id="fusion-value">NO_TARGET</strong>
+          </div>
+          <div class="badge">
+            <span class="badge-label">Question Phase</span>
+            <strong id="phase-value">WAIT_FOR_MOVEMENT</strong>
+          </div>
+        </div>
       </div>
+
+      <div class="meter-shell">
+        <div class="meter" aria-label="Live score">
+          <div id="meter-fill" class="meter-fill"></div>
+        </div>
+        <div class="scale-row">
+          <span id="min-label">0</span>
+          <span>Business card controls the score</span>
+          <span id="max-label">10</span>
+        </div>
+      </div>
+
       <div class="score-row">
         <div>
-          <div class="label">Score</div>
+          <div class="label">Rating</div>
           <div id="score-value" class="score-value">--</div>
         </div>
         <div>
@@ -28,8 +51,29 @@
           <div class="label">State</div>
           <div id="state-value" class="detail-value">BOOT</div>
         </div>
+        <div>
+          <div class="label">Candidate</div>
+          <div id="candidate-value" class="detail-value">--</div>
+        </div>
       </div>
+
+      <div id="countdown-panel" class="countdown-panel hidden">
+        <div class="label">Snapshot Countdown</div>
+        <div id="countdown-value" class="countdown-value">3</div>
+      </div>
+
       <div id="detail-line" class="detail-line">No score yet.</div>
+
+      <div class="debug-grid">
+        <div class="debug-card">
+          <div class="label">Debug View</div>
+          <img id="debug-frame" class="debug-frame" alt="Tracking debug overlay" />
+        </div>
+        <div class="debug-card">
+          <div class="label">Tracking Notes</div>
+          <div id="debug-line" class="debug-line">No debug data yet.</div>
+        </div>
+      </div>
     </div>
   </div>
   <script src="app.js"></script>

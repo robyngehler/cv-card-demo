@@ -18,6 +18,11 @@ class CardPose:
     height: float
     confidence: float
     x_normalized: Optional[float] = None
+    y_normalized: Optional[float] = None
+    source: str = "classical_contour"
+    label: str = "business_card"
+    is_business_card: bool = True
+    bbox_points: list[tuple[float, float]] = field(default_factory=list)
 
 
 @dataclass
@@ -29,11 +34,19 @@ class CardDetectionResult:
     status: str = "OK"
     debug: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
+    detector_type: str = "classical_contour"
+    primary_label: Optional[str] = "business_card"
+    cached: bool = False
 
 
 class ClassicalCardDetector:
     def __init__(self, context):
         self.context = context
+        self.detector_name = "classical_contour"
+        self.business_card_label = (
+            context.config.get("detector", {}).get("business_card_label")
+            or "business_card"
+        )
         self.status: Dict[str, Any] = {
             "status": "NOT_INITIALIZED",
             "visible": False,
@@ -47,11 +60,21 @@ class ClassicalCardDetector:
             import cv2
         except ImportError as exc:
             self._update_status("ERROR", error="OpenCV is not available")
-            return CardDetectionResult(visible=False, status="ERROR", error="OpenCV is not available")
+            return CardDetectionResult(
+                visible=False,
+                status="ERROR",
+                error="OpenCV is not available",
+                detector_type="classical_contour",
+            )
 
         if workspace_frame is None or len(workspace_frame.shape) < 2:
             self._update_status("ERROR", error="Invalid workspace frame")
-            return CardDetectionResult(visible=False, status="ERROR", error="Invalid workspace frame")
+            return CardDetectionResult(
+                visible=False,
+                status="ERROR",
+                error="Invalid workspace frame",
+                detector_type="classical_contour",
+            )
 
         config = self.context.config.get("detector", {})
         preprocessing = config.get("preprocessing", {})
@@ -151,6 +174,8 @@ class ClassicalCardDetector:
                 continue
 
             x_normalized = clamp(float(center_x) / float(mask.shape[1]))
+            y_normalized = clamp(float(center_y) / float(mask.shape[0]))
+            box_points = cv2.boxPoints(rect)
             pose = CardPose(
                 visible=True,
                 x=float(center_x),
@@ -160,6 +185,11 @@ class ClassicalCardDetector:
                 height=float(height),
                 confidence=confidence,
                 x_normalized=x_normalized,
+                y_normalized=y_normalized,
+                source=self.detector_name,
+                label=self.business_card_label,
+                is_business_card=True,
+                bbox_points=[(float(x), float(y)) for x, y in box_points],
             )
             candidates.append(pose)
             debug_contours.append(
@@ -187,6 +217,8 @@ class ClassicalCardDetector:
                 candidates_count=len(candidates),
                 status="OK",
                 debug={"contours": debug_contours},
+                detector_type=self.detector_name,
+                primary_label=self.business_card_label,
             )
 
         self._update_status("OK", visible=False, candidates_count=0, confidence=0.0, x_normalized=None)
@@ -197,6 +229,8 @@ class ClassicalCardDetector:
             candidates_count=0,
             status="OK",
             debug={"contours": debug_contours},
+            detector_type=self.detector_name,
+            primary_label=self.business_card_label,
         )
 
     def get_status(self) -> Dict[str, Any]:

@@ -1,6 +1,7 @@
 import asyncio
 import threading
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from uvicorn import Config, Server
 
@@ -25,10 +26,33 @@ class UIService:
 
         @self.app.get("/api/state")
         async def state():
+            session = self.context.runtime.get("session", {})
+            tracking = self.context.runtime.get("tracking", {})
+            last_fusion = self.context.runtime.get("last_fusion_measurement")
             return {
                 "state": self.context.runtime.get("current_state"),
                 "substate": self.context.runtime.get("substate"),
+                "session": {
+                    "session_id": session.get("session_id"),
+                    "candidate_id": session.get("candidate_id"),
+                    "identity_status": session.get("identity_status"),
+                    "current_question_id": session.get("current_question_id"),
+                    "phase": session.get("phase"),
+                    "completed": session.get("completed"),
+                },
+                "tracking": {
+                    "source": tracking.get("source"),
+                    "fusion_state": tracking.get("fusion_state"),
+                    "last_score": getattr(last_fusion, "score", None),
+                },
             }
+
+        @self.app.get("/api/debug-frame")
+        async def debug_frame():
+            frame_bytes = self.context.runtime.get("last_debug_frame_jpeg")
+            if not frame_bytes:
+                return Response(status_code=204)
+            return Response(content=frame_bytes, media_type="image/jpeg")
 
         @self.app.get("/api/version")
         async def version():

@@ -1,6 +1,5 @@
 import time
 
-from app.cv.card_tracker import CardTracker
 
 class TrackingState:
     """
@@ -14,35 +13,24 @@ class TrackingState:
 
     def __init__(self, context):
         self.context = context
-        
+
         # Load config
         tracking_config = context.config.get("tracking", {})
         camera_config = context.config.get("camera", {})
         fps = float(camera_config.get("fps", 30) or 30)
         self.poll_interval = float(tracking_config.get("poll_interval_s", max(0.01, 1.0 / fps)))
-        self.publish_last_position_during_occlusion = bool(
-            tracking_config.get("publish_last_position_during_occlusion", True)
-        )
-        self.tracker = CardTracker(
-            max_lost_duration_s=float(tracking_config.get("tracking_max_lost_duration_s", 0.5)),
-            match_max_distance_px=float(tracking_config.get("tracking_match_max_distance_px", 80.0)),
-            prediction_enabled=bool(tracking_config.get("tracking_prediction_enabled", True)),
-            velocity_smoothing_alpha=float(tracking_config.get("tracking_velocity_smoothing_alpha", 0.6)),
-        )
 
     def enter(self):
         self.context.runtime["current_state"] = self.name
         self.context.runtime["substate"] = "TRACKING_ENTER"
-        self.tracker.reset()
-        last_candidate = self.context.runtime.get("last_candidate")
-        if hasattr(last_candidate, "x"):
-            self.tracker.initialize(last_candidate)
-        
+        fusion_tracker = self.context.get_service("fusion_tracker", default=None)
+        if fusion_tracker is not None:
+            fusion_tracker.reset()
+
         if self.context.logger:
             self.context.logger.info(
                 "Entering TRACKING state "
-                f"(max_lost_duration_s={self.tracker.max_lost_duration_s:.2f}, "
-                f"poll_interval_s={self.poll_interval:.3f})"
+                f"(poll_interval_s={self.poll_interval:.3f})"
             )
 
     def run(self):
@@ -56,16 +44,14 @@ class TrackingState:
         """
         self.context.runtime["substate"] = "TRACKING_ACTIVE"
         
-        from app.services.camera_service import CameraService
-        from app.services.workspace_service import WorkspaceService
-        from app.services.ui_service import UIService
-        from app.cv.classical_card_detector import ClassicalCardDetector
-        
         try:
-            camera = self.context.get_service(CameraService)
-            workspace_service = self.context.get_service(WorkspaceService)
-            detector = self.context.get_service(ClassicalCardDetector)
-            ui_service = self.context.get_service(UIService)
+            camera = self.context.get_service("camera")
+            workspace_service = self.context.get_service("workspace")
+            detector = self.context.get_service("detector")
+            hand_tracker = self.context.get_service("hand_tracker", default=None)
+            fusion_tracker = self.context.get_service("fusion_tracker")
+            questionnaire = self.context.get_service("questionnaire", default=None)
+            ui_service = self.context.get_service("ui", default=None)
         except Exception as e:
             if self.context.logger:
                 self.context.logger.error(f"TRACKING: Failed to get services: {e}")
@@ -78,22 +64,15 @@ class TrackingState:
                 if self.context.logger:
                     self.context.logger.warning("TRACKING: No frame available (camera lost?)")
                 return "IDLE_NO_CARD"
+            self.context.runtime["last_frame"] = frame
         except Exception as e:
             if self.context.logger:
                 self.context.logger.warning(f"TRACKING: Camera read failed: {e}")
             return "RECOVERY"
-        
-        # Transform to workspace
-        try:
-            workspace_frame = workspace_service.transform(frame)
-        except Exception as e:
-            if self.context.logger:
-                self.context.logger.warning(f"TRACKING: Workspace transform failed: {e}")
-            return "IDLE_NO_CARD"
-        
+
         # Detect card
         try:
-            result = detector.detect(workspace_frame)
+            result = detector.detect(frame, state_name=self.name)
         except Exception as e:
             if self.context.logger:
                 self.context.logger.warning(f"TRACKING: Detection failed: {e}")
@@ -105,64 +84,112 @@ class TrackingState:
         self.context.runtime["last_detection"] = result
         
         matched_candidate = None
-        if result.visible and result.candidate:
-            matched_candidate = self.tracker.match_candidate(result.candidates or [result.candidate], now=now)
-            if matched_candidate is None and not self.tracker.is_initialized():
-                matched_candidate = result.candidate
+        if result.visible and result.candidate and result.candidate.is_business_card:
+            matched_candidate = result.candidate
 
+        card_measurement = None
         if matched_candidate is not None:
-            self.tracker.update(matched_candidate, now=now)
             self.context.runtime["last_candidate"] = matched_candidate
-            self._publish_score(
-                ui_service,
-                matched_candidate,
-                source="detected",
-                candidates_count=result.candidates_count,
+            card_measurement = matched_candidate
+            self.context.runtime["last_card_measurement"] = matched_candidate
+
+        hand_measurement = None
+        if hand_tracker is not None:
+            hand_measurement = hand_tracker.detect(frame, now=now)
+        self.context.runtime["last_hand_measurement"] = hand_measurement
+
+        session = self.context.runtime.get("session", {})
+        if questionnaire is not None and not session.get("session_id") and card_measurement is not None:
+            if self.context.logger:
+                self.context.logger.warning("TRACKING: Session missing, creating fallback temporary session")
+            questionnaire.ensure_session(
+                candidate_id=None,
+                identity_status="TEMPORARY_TRACKING_FALLBACK",
+                resume_policy="resume_incomplete_or_new",
+                now=now,
             )
-            time.sleep(self.poll_interval)
-            return None
+            session = self.context.runtime.get("session", {})
 
-        lost_duration_s = self.tracker.lost_duration(now=now)
-        if self.context.logger:
-            self.context.logger.debug(
-                "TRACKING: detector lost card "
-                f"lost_duration_s={lost_duration_s:.3f} "
-                f"max_lost_duration_s={self.tracker.max_lost_duration_s:.3f}"
-            )
+        fusion_measurement = fusion_tracker.update(
+            card_measurement,
+            hand_measurement,
+            now=now,
+        )
+        self.context.runtime["last_fusion_measurement"] = fusion_measurement
+        self.context.runtime.setdefault("tracking", {})["source"] = fusion_measurement.source
+        self.context.runtime.setdefault("tracking", {})["fusion_state"] = fusion_measurement.fusion_state
+        self.context.runtime.setdefault("tracking", {})["last_visible_score"] = fusion_measurement.score
 
-        if self.publish_last_position_during_occlusion and self.tracker.has_recent_track(now=now):
-            predicted_pose = self.tracker.predicted_pose(frame_width=workspace_frame.shape[1], now=now)
-            if predicted_pose is not None:
-                self.context.runtime["last_candidate"] = predicted_pose
-                self._publish_score(
-                    ui_service,
-                    predicted_pose,
-                    source="tracked_occluded",
-                    candidates_count=result.candidates_count,
-                )
-                time.sleep(self.poll_interval)
-                return None
+        questionnaire_context = {}
+        if questionnaire is not None:
+            questionnaire_context = questionnaire.update(fusion_measurement, now=now)
 
-        if self.context.logger:
-            self.context.logger.info(
-                "TRACKING: Card lost beyond tolerance, transitioning to IDLE_NO_CARD "
-                f"lost_duration_s={lost_duration_s:.3f}"
-            )
-        self._publish_lost(ui_service)
-        return "IDLE_NO_CARD"
+        self._publish_score(
+            ui_service,
+            fusion_measurement,
+            result.candidates_count,
+            questionnaire_context,
+            hand_measurement,
+            card_measurement,
+        )
+        self._update_debug_frame(
+            frame,
+            workspace_service,
+            card_measurement,
+            hand_measurement,
+            fusion_measurement,
+        )
 
-    def _publish_score(self, ui_service, pose, *, source, candidates_count):
+        if questionnaire is not None and questionnaire.consume_snapshot_request():
+            return "SNAPSHOT"
+
+        if not fusion_measurement.visible and fusion_measurement.fusion_state == "NO_TARGET":
+            if self.context.logger:
+                self.context.logger.info("TRACKING: No valid target remaining, transitioning to IDLE_NO_CARD")
+            return "IDLE_NO_CARD"
+
+        time.sleep(self.poll_interval)
+        return None
+
+    def _publish_score(
+        self,
+        ui_service,
+        fusion_measurement,
+        candidates_count,
+        questionnaire_context,
+        hand_measurement,
+        card_measurement,
+    ):
         if not ui_service:
             return
 
         score = {
-            "visible": True,
-            "score": pose.x_normalized,
-            "x_normalized": pose.x_normalized,
-            "confidence": pose.confidence,
+            "visible": fusion_measurement.visible,
+            "score": fusion_measurement.score,
+            "rating": fusion_measurement.rating,
+            "x_normalized": fusion_measurement.x_normalized,
+            "confidence": fusion_measurement.confidence,
             "candidates_count": candidates_count,
             "state": self.name,
-            "source": source,
+            "source": fusion_measurement.source,
+            "fusion_state": fusion_measurement.fusion_state,
+            "question_id": questionnaire_context.get("question_id"),
+            "candidate_id": questionnaire_context.get("candidate_id"),
+            "identity_status": questionnaire_context.get("identity_status"),
+            "question_label": questionnaire_context.get("question_label"),
+            "question_phase": questionnaire_context.get("phase"),
+            "question_index": questionnaire_context.get("question_index"),
+            "countdown_remaining_s": questionnaire_context.get("countdown_remaining_s"),
+            "question_min_label": questionnaire_context.get("question_min_label"),
+            "question_max_label": questionnaire_context.get("question_max_label"),
+            "message": questionnaire_context.get("message"),
+            "debug": {
+                "hand_visible": bool(hand_measurement is not None and hand_measurement.visible),
+                "hand_valid": bool(hand_measurement is not None and hand_measurement.valid),
+                "card_visible": bool(card_measurement is not None and getattr(card_measurement, "visible", False)),
+                "card_source": getattr(card_measurement, "source", None),
+                **fusion_measurement.debug,
+            },
         }
         try:
             ui_service.publish_score(score)
@@ -170,25 +197,92 @@ class TrackingState:
             if self.context.logger:
                 self.context.logger.debug(f"TRACKING: UI publish failed (non-critical): {e}")
 
-    def _publish_lost(self, ui_service):
-        if not ui_service:
+    def _update_debug_frame(
+        self,
+        frame,
+        workspace_service,
+        card_measurement,
+        hand_measurement,
+        fusion_measurement,
+    ):
+        try:
+            import cv2
+        except Exception:
             return
 
-        try:
-            ui_service.publish_score(
-                {
-                    "visible": False,
-                    "score": None,
-                    "x_normalized": None,
-                    "confidence": 0.0,
-                    "candidates_count": 0,
-                    "state": "IDLE_NO_CARD",
-                    "source": "lost",
-                }
+        overlay = frame.copy()
+        if len(overlay.shape) == 2:
+            overlay = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGR)
+
+        for name, color in (("card", (82, 222, 151)), ("hand", (245, 171, 53))):
+            workspace = workspace_service.workspaces.get(name)
+            if workspace is None or workspace.rect_px is None:
+                continue
+            rect_x, rect_y, rect_width, rect_height = workspace.rect_px
+            cv2.rectangle(
+                overlay,
+                (int(rect_x), int(rect_y)),
+                (int(rect_x + rect_width), int(rect_y + rect_height)),
+                color,
+                2,
             )
-        except Exception:
-            pass
+            cv2.putText(
+                overlay,
+                f"{name} workspace",
+                (int(rect_x), max(18, int(rect_y) - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                color,
+                1,
+            )
+
+        if card_measurement is not None:
+            bbox_points = getattr(card_measurement, "bbox_points", None) or []
+            if bbox_points:
+                full_points = [workspace_service.to_full_frame(point, workspace_name="card") for point in bbox_points]
+                polyline = [
+                    [int(point[0]), int(point[1])]
+                    for point in full_points
+                ]
+                cv2.polylines(overlay, [cv2.UMat(polyline).get() if False else __import__("numpy").array(polyline, dtype="int32")], True, (82, 222, 151), 2)
+            center_x, center_y = workspace_service.to_full_frame((card_measurement.x, card_measurement.y), workspace_name="card")
+            cv2.circle(overlay, (int(center_x), int(center_y)), 5, (82, 222, 151), -1)
+
+        if hand_measurement is not None and hand_measurement.landmarks:
+            for point in hand_measurement.landmarks.values():
+                full_x, full_y = workspace_service.to_full_frame(point, workspace_name="hand")
+                cv2.circle(overlay, (int(full_x), int(full_y)), 4, (245, 171, 53), -1)
+            if hand_measurement.proxy_x is not None and hand_measurement.proxy_y is not None:
+                proxy_x, proxy_y = workspace_service.to_full_frame(
+                    (hand_measurement.proxy_x, hand_measurement.proxy_y),
+                    workspace_name="card",
+                )
+                cv2.circle(overlay, (int(proxy_x), int(proxy_y)), 8, (255, 255, 255), 2)
+
+        cv2.putText(
+            overlay,
+            f"state={fusion_measurement.fusion_state} source={fusion_measurement.source}",
+            (20, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            2,
+        )
+        cv2.putText(
+            overlay,
+            f"score={fusion_measurement.score if fusion_measurement.score is not None else 'None'} rating={fusion_measurement.rating if fusion_measurement.rating is not None else 'None'}",
+            (20, 56),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (255, 255, 255),
+            1,
+        )
+
+        success, encoded = cv2.imencode(".jpg", overlay)
+        if success:
+            self.context.runtime["last_debug_frame_jpeg"] = encoded.tobytes()
 
     def exit(self):
         if self.context.logger:
             self.context.logger.info("Exiting TRACKING state")
+

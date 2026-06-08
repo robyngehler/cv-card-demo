@@ -10,11 +10,14 @@ docs/sub-sprint-phase/02_init_cam/
 docs/sub-sprint-phase/03_workspace_calibration/
 docs/sub-sprint-phase/04_card_detection/
 docs/sub-sprint-phase/06_tracking_stability/
+docs/sub-sprint-phase/07_tracking_advances/
+docs/sub-sprint-phase/08_state_and_persistence_advances/
 ```
 
 Each phase folder must contain:
 
 ```text
+target.md
 checklist.md
 errors_and_fixes.md
 ```
@@ -24,6 +27,15 @@ Use `_template/` when creating a new phase folder.
 ---
 
 ## Required Files per Phase
+
+### `target.md`
+
+Tracks:
+
+- objective scope for the sprint or phase
+- guardrails that override older assumptions
+- implementation target and current implementation status
+- explicit out-of-scope items
 
 ### `checklist.md`
 

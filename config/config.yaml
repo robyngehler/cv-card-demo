@@ -14,19 +14,41 @@ boot:
   allow_degraded_wled: true
 
 workspace:
-  mode: "manual_rect"
-  source_frame: "camera"
-  rect_px:
-    x: 100
-    y: 70
-    width: 490
-    height: 290
-  score_axis: "x"
-  invert_score_axis: false
+  card:
+    mode: "manual_rect"
+    source_frame: "camera"
+    rect_px:
+      x: 100
+      y: 70
+      width: 490
+      height: 290
+    score_axis: "x"
+    invert_score_axis: false
+  hand:
+    mode: "manual_rect"
+    source_frame: "camera"
+    rect_px:
+      x: 70
+      y: 40
+      width: 560
+      height: 360
+    normalize_against: "card"
 
 detector:
   type: "classical"
   enabled: true
+  business_card_label: "business_card"
+  require_business_card_candidate: true
+  loop_hz:
+    default: 4
+    IDLE_NO_CARD: 4
+    CANDIDATE_DETECTED: 8
+    TRACKING: 3
+    SNAPSHOT: 0
+
+  yolo:
+    model_path: ""
+    confidence: 0.25
 
   preprocessing:
     grayscale: true
@@ -57,11 +79,107 @@ tracking:
   candidate_required_frames: 3
   candidate_max_lost_frames: 2
   tracking_max_lost_duration_s: 0.5
-  tracking_prediction_enabled: true
-  tracking_match_max_distance_px: 80
-  tracking_velocity_smoothing_alpha: 0.6
-  publish_last_position_during_occlusion: true
   poll_interval_s: 0.033
+
+  hand:
+    enabled: true
+    model: "mediapipe_hands"
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+    max_proxy_velocity_norm_per_s: 2.0
+    max_distance_from_card_norm: 0.35
+    workspace_margin_px: 20
+    fallback_order:
+      - "index_middle_proxy"
+      - "index_only_proxy"
+      - "palm_center_proxy"
+
+  fusion:
+    card_to_hand:
+      min_hand_stable_frames: 2
+      hand_takeover_blend_s: 0.10
+      max_initial_offset_norm: 0.35
+
+    hand_to_card:
+      min_card_stable_frames: 3
+      reacquire_tolerance_norm: 0.04
+      ambiguous_tolerance_norm: 0.12
+      allow_displayed_score_drift: false
+      allow_blend_to_card_pose: false
+      validate_timeout_s: 0.25
+
+    lost_hold:
+      max_duration_s: 0.5
+
+    smoothing:
+      score_ema_alpha: 0.35
+
+questionnaire:
+  questions:
+    - id: "experience"
+      label: "How was your experience?"
+      min_label: "0"
+      max_label: "10"
+      min_motion_norm: 0.03
+      small_motion_epsilon: 0.005
+      active_motion_duration_s: 1.0
+      idle_before_countdown_s: 3.0
+      countdown_s: 3.0
+      snapshot_on_confirm: true
+
+    - id: "team"
+      label: "How was the team?"
+      min_label: "0"
+      max_label: "10"
+      min_motion_norm: 0.03
+      small_motion_epsilon: 0.005
+      active_motion_duration_s: 1.0
+      idle_before_countdown_s: 3.0
+      countdown_s: 3.0
+      snapshot_on_confirm: true
+
+    - id: "solution_fit"
+      label: "How strong is the solution fit?"
+      min_label: "0"
+      max_label: "10"
+      min_motion_norm: 0.03
+      small_motion_epsilon: 0.005
+      active_motion_duration_s: 1.0
+      idle_before_countdown_s: 3.0
+      countdown_s: 3.0
+      snapshot_on_confirm: true
+
+identity:
+  precheck:
+    enabled: true
+    idle_loop_hz: 1.0
+    candidate_loop_hz: 2.0
+    max_duration_s: 1.0
+    min_card_confidence: 0.35
+    require_ocr_for_known_match: true
+    allow_vector_match: false
+
+  vector:
+    review_threshold: 0.85
+
+snapshot:
+  output_dir: "./data/snapshots"
+
+persistence:
+  enabled: true
+  sqlite_path: "./data/cv_card_demo.sqlite3"
+
+ocr:
+  llm:
+    enabled: false
+
+vector:
+  enabled: true
+  qdrant_path: "./data/qdrant"
+  text:
+    model: "sentence-transformers/all-MiniLM-L6-v2"
+  image:
+    model: "clip-ViT-B-32"
 
 logging:
   level: "INFO"

@@ -1,7 +1,10 @@
 body {
   margin: 0;
-  font-family: "Segoe UI", sans-serif;
-  background: linear-gradient(180deg, #171a1f 0%, #0f1216 100%);
+  font-family: "Bahnschrift", "Aptos", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(255, 214, 102, 0.18), transparent 36%),
+    radial-gradient(circle at bottom right, rgba(90, 169, 230, 0.18), transparent 34%),
+    linear-gradient(180deg, #10202a 0%, #071218 100%);
   color: #f3f5f7;
 }
 
@@ -9,16 +12,17 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  min-height: 100vh;
   padding: 24px;
 }
 
 .panel {
-  width: min(720px, 100%);
+  width: min(1120px, 100%);
   padding: 32px;
-  border-radius: 24px;
-  background: rgba(24, 29, 36, 0.88);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  border-radius: 28px;
+  background: rgba(14, 26, 33, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.32);
 }
 
 .eyebrow {
@@ -31,13 +35,48 @@ body {
 
 h1 {
   margin: 0 0 16px;
-  font-size: clamp(2rem, 4vw, 3.2rem);
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  line-height: 1.05;
 }
 
 .status {
   margin-bottom: 20px;
   font-size: 1.05rem;
   color: #dce5eb;
+  max-width: 42rem;
+}
+
+.hero-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.badge-stack {
+  display: grid;
+  gap: 12px;
+  min-width: 240px;
+}
+
+.badge {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.badge-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9db1bf;
+}
+
+.meter-shell {
+  margin-top: 18px;
 }
 
 .meter {
@@ -51,14 +90,23 @@ h1 {
 .meter-fill {
   width: 0%;
   height: 100%;
-  background: linear-gradient(90deg, #5aa9e6 0%, #8de969 100%);
+  background: linear-gradient(90deg, #ffd166 0%, #5aa9e6 48%, #6fe3c1 100%);
   transition: width 120ms linear, opacity 120ms linear;
   opacity: 0.2;
 }
 
+.scale-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  color: #b5c7d1;
+  font-size: 0.95rem;
+}
+
 .score-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin-top: 20px;
 }
@@ -85,12 +133,70 @@ h1 {
   color: #a8bac6;
 }
 
+.countdown-panel {
+  margin-top: 20px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(255, 209, 102, 0.14), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 209, 102, 0.22);
+}
+
+.countdown-value {
+  font-size: 3rem;
+  font-weight: 700;
+}
+
+.hidden {
+  display: none;
+}
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.debug-card {
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.debug-frame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.28);
+  margin-top: 10px;
+}
+
+.debug-line {
+  color: #d3dee5;
+  line-height: 1.5;
+}
+
 @media (max-width: 640px) {
   .panel {
     padding: 24px;
   }
 
+  .hero-row {
+    flex-direction: column;
+  }
+
+  .badge-stack {
+    width: 100%;
+    min-width: 0;
+  }
+
   .score-row {
+    grid-template-columns: 1fr;
+  }
+
+  .debug-grid {
     grid-template-columns: 1fr;
   }
 }

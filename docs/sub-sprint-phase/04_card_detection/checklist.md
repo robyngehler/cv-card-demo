@@ -8,11 +8,11 @@
 | Phase Name | `Card Detection` |
 | Status | `IN_PROGRESS` |
 | Owner | TBD |
-| Last Updated | 2026-06-05 |
+| Last Updated | 2026-06-06 |
 
 ## Goal
 
-Detect a card inside the calibrated workspace with a simple classical OpenCV pipeline and expose enough scored candidates for the tracking phase.
+Detect a business card inside the calibrated workspace with a simple classical OpenCV pipeline and expose enough scored candidates for downstream tracking and questionnaire flow.
 
 ## Scope
 
@@ -23,14 +23,15 @@ This phase includes:
 - [x] Confidence scoring with area, aspect ratio, and rectangularity
 - [x] `x_normalized` output for downstream score publishing
 - [x] Detector runtime status for health/debugging
+- [x] Explicit `business_card` candidate gating for `CANDIDATE_DETECTED`
 
 ## Non-Goals
 
 This phase explicitly does not include:
 
-- [ ] Deep learning-based detection
+- [ ] Deep learning-based detection as the active MVP runtime path
 - [ ] Multi-camera support
-- [ ] Occlusion hold logic in `TRACKING`
+- [ ] Long-horizon hand-card fusion logic in `TRACKING`
 - [ ] WLED output
 
 ## Implementation Checklist
@@ -39,17 +40,20 @@ This phase explicitly does not include:
 - [x] Make preprocessing and scoring configurable
 - [x] Expose sorted candidate list for tracker matching
 - [x] Add detector debug overlay and analysis scripts
+- [x] Add detector service abstraction for future YOLO integration
 - [x] Keep implementation local and dependency-light
+- [x] Make `CANDIDATE_DETECTED` detector-driven and business-card-only
 - [x] Update `errors_and_fixes.md`
 - [x] Update `docs/global_checklist.md`
 
 ## Acceptance Criteria
 
 - [x] Detector returns `visible=false` when no card is present
-- [x] Detector returns `visible=true` with a best candidate for a clear card
+- [x] Detector returns `visible=true` with a best candidate for a clear business card
 - [x] Detector returns `x_normalized` in `0.0 ... 1.0`
 - [x] Detector exposes candidate list for tracking continuity
 - [x] Detector status is visible in health endpoint
+- [x] `CANDIDATE_DETECTED` only accepts detector output labeled as `business_card`
 - [ ] Real camera confidence tuning verified on Jetson
 
 ## Manual Test Steps
@@ -97,4 +101,5 @@ PASS (2026-06-05)
 
 ## Notes
 
-Tracking continuity and hand-occlusion behavior are documented in Phase 06 to avoid duplicating the same issue across phases.
+Tracking continuity and hand-occlusion behavior are documented in Phase 06 and Phase 07 to avoid duplicating the same issue across phases.
+The detection phase remains business-card anchored so the system cannot silently degrade into hand-only interaction without OCR/snapshot eligibility.

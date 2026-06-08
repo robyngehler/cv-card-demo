@@ -3,92 +3,195 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
+from app.cv.classical_card_detector import clamp
+
 
 @dataclass
-class WorkspaceStatus:
+class ScoreMappingDefinition:
+    workspace_name: str = "card"
+    axis: str = "x"
+    invert: bool = False
+
+
+@dataclass
+class WorkspaceServiceStatus:
     status: str = "NOT_INITIALIZED"
+    last_error: Optional[str] = None
+    configured_workspaces: list[str] = field(default_factory=list)
+
+
+@dataclass
+class WorkspaceDefinition:
+    name: str
     mode: str = "manual_rect"
+    source_frame: str = "camera"
+    rect_px: Optional[Tuple[int, int, int, int]] = None
+    points_px: Optional[Dict[str, Any]] = None
+    output_size_px: Optional[Tuple[int, int]] = None
+    transform_matrix: Any = None
+    inverse_transform_matrix: Any = None
     width: Optional[int] = None
     height: Optional[int] = None
-    score_axis: str = "x"
-    invert_score_axis: bool = False
-    last_error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class WorkspaceService:
     def __init__(self, context):
         self.context = context
         self.config: Dict[str, Any] = {}
-        self.status = WorkspaceStatus()
-        self.rect_px: Optional[Tuple[int, int, int, int]] = None
-        self.points_px = None
-        self.output_size_px: Optional[Tuple[int, int]] = None
-        self.transform_matrix = None
+        self.status = WorkspaceServiceStatus()
+        self.score_mapping = ScoreMappingDefinition()
+        self.workspaces: Dict[str, WorkspaceDefinition] = {}
 
     def configure(self, config: Dict[str, Any]) -> None:
         self.config = config or {}
         self.status.status = "VALIDATING"
-        self.status.mode = self.config.get("mode", "manual_rect")
-        self.status.score_axis = self.config.get("score_axis", "x")
-        self.status.invert_score_axis = bool(self.config.get("invert_score_axis", False))
+        card_config = self._workspace_config("card")
+        self.score_mapping = ScoreMappingDefinition(
+            workspace_name="card",
+            axis=card_config.get("score_axis", "x"),
+            invert=bool(card_config.get("invert_score_axis", False)),
+        )
 
     def validate(self, frame_shape: Tuple[int, ...]) -> None:
         if not frame_shape or len(frame_shape) < 2:
             self._fail("Invalid frame shape")
             raise ValueError("Invalid frame shape")
 
-        mode = self.config.get("mode", "manual_rect")
-        if mode == "manual_rect":
-            self._validate_manual_rect(frame_shape)
-        elif mode == "manual_quad":
-            self._validate_manual_quad(frame_shape)
-        else:
-            self._fail(f"Unsupported workspace mode: {mode}")
-            raise ValueError(f"Unsupported workspace mode: {mode}")
+        self.workspaces = {}
+        for name in self._workspace_names():
+            config = self._workspace_config(name)
+            definition = WorkspaceDefinition(
+                name=name,
+                mode=config.get("mode", "manual_rect"),
+                source_frame=config.get("source_frame", "camera"),
+            )
+            if definition.mode == "manual_rect":
+                self._validate_manual_rect(definition, config, frame_shape)
+            elif definition.mode == "manual_quad":
+                self._validate_manual_quad(definition, config, frame_shape)
+            else:
+                self._fail(f"Unsupported workspace mode: {definition.mode}")
+                raise ValueError(f"Unsupported workspace mode: {definition.mode}")
 
+            self.workspaces[name] = definition
+
+        self.status.configured_workspaces = list(self.workspaces.keys())
         self.status.status = "OK"
         self.status.last_error = None
 
-    def transform(self, frame):
+    def transform(self, frame, workspace_name: str = "card"):
         import cv2
 
         if self.status.status != "OK":
             raise RuntimeError("Workspace is not ready")
 
-        if self.status.mode == "manual_rect":
-            if self.rect_px is None:
-                raise RuntimeError("Workspace rectangle is not configured")
-            x, y, width, height = self.rect_px
+        workspace = self._require_workspace(workspace_name)
+
+        if workspace.mode == "manual_rect":
+            if workspace.rect_px is None:
+                raise RuntimeError(f"Workspace rectangle is not configured for {workspace_name}")
+            x, y, width, height = workspace.rect_px
             return frame[y : y + height, x : x + width]
 
-        if self.status.mode == "manual_quad":
-            if self.transform_matrix is None or self.output_size_px is None:
-                raise RuntimeError("Workspace quad is not configured")
-            output_width, output_height = self.output_size_px
-            return cv2.warpPerspective(frame, self.transform_matrix, (output_width, output_height))
+        if workspace.mode == "manual_quad":
+            if workspace.transform_matrix is None or workspace.output_size_px is None:
+                raise RuntimeError(f"Workspace quad is not configured for {workspace_name}")
+            output_width, output_height = workspace.output_size_px
+            return cv2.warpPerspective(frame, workspace.transform_matrix, (output_width, output_height))
 
-        raise RuntimeError(f"Unsupported workspace mode: {self.status.mode}")
+        raise RuntimeError(f"Unsupported workspace mode: {workspace.mode}")
+
+    def translate_point(
+        self,
+        point_xy: Tuple[float, float],
+        *,
+        from_workspace: str,
+        to_workspace: str,
+    ) -> Tuple[float, float]:
+        full_frame_point = self.to_full_frame(point_xy, workspace_name=from_workspace)
+        return self.from_full_frame(full_frame_point, workspace_name=to_workspace)
+
+    def to_full_frame(self, point_xy: Tuple[float, float], *, workspace_name: str = "card") -> Tuple[float, float]:
+        workspace = self._require_workspace(workspace_name)
+        point_x, point_y = float(point_xy[0]), float(point_xy[1])
+
+        if workspace.mode == "manual_rect":
+            if workspace.rect_px is None:
+                raise RuntimeError(f"Workspace rectangle is not configured for {workspace_name}")
+            rect_x, rect_y, _, _ = workspace.rect_px
+            return (rect_x + point_x, rect_y + point_y)
+
+        if workspace.mode == "manual_quad":
+            if workspace.inverse_transform_matrix is None:
+                raise RuntimeError(f"Workspace inverse transform is not configured for {workspace_name}")
+            return self._perspective_point((point_x, point_y), workspace.inverse_transform_matrix)
+
+        raise RuntimeError(f"Unsupported workspace mode: {workspace.mode}")
+
+    def from_full_frame(self, point_xy: Tuple[float, float], *, workspace_name: str = "card") -> Tuple[float, float]:
+        workspace = self._require_workspace(workspace_name)
+        point_x, point_y = float(point_xy[0]), float(point_xy[1])
+
+        if workspace.mode == "manual_rect":
+            if workspace.rect_px is None:
+                raise RuntimeError(f"Workspace rectangle is not configured for {workspace_name}")
+            rect_x, rect_y, _, _ = workspace.rect_px
+            return (point_x - rect_x, point_y - rect_y)
+
+        if workspace.mode == "manual_quad":
+            if workspace.transform_matrix is None:
+                raise RuntimeError(f"Workspace transform is not configured for {workspace_name}")
+            return self._perspective_point((point_x, point_y), workspace.transform_matrix)
+
+        raise RuntimeError(f"Unsupported workspace mode: {workspace.mode}")
+
+    def normalize_point(self, point_xy: Tuple[float, float], *, workspace_name: str = "card") -> Dict[str, float]:
+        workspace = self._require_workspace(workspace_name)
+        if not workspace.width or not workspace.height:
+            raise RuntimeError(f"Workspace dimensions are not ready for {workspace_name}")
+        return {
+            "x": clamp(float(point_xy[0]) / float(max(workspace.width, 1))),
+            "y": clamp(float(point_xy[1]) / float(max(workspace.height, 1))),
+        }
+
+    def contains_point(
+        self,
+        point_xy: Tuple[float, float],
+        *,
+        workspace_name: str = "card",
+        margin_px: float = 0.0,
+    ) -> bool:
+        workspace = self._require_workspace(workspace_name)
+        width = float(workspace.width or 0)
+        height = float(workspace.height or 0)
+        point_x, point_y = float(point_xy[0]), float(point_xy[1])
+        return (
+            (-margin_px) <= point_x <= (width + margin_px)
+            and (-margin_px) <= point_y <= (height + margin_px)
+        )
+
+    def get_dimensions(self, workspace_name: str = "card") -> Tuple[int, int]:
+        workspace = self._require_workspace(workspace_name)
+        if workspace.width is None or workspace.height is None:
+            raise RuntimeError(f"Workspace dimensions are not ready for {workspace_name}")
+        return (workspace.width, workspace.height)
 
     def get_status(self) -> Dict[str, Any]:
         payload = asdict(self.status)
-        payload.pop("metadata", None)
-        if self.rect_px is not None:
-            payload["rect_px"] = {
-                "x": self.rect_px[0],
-                "y": self.rect_px[1],
-                "width": self.rect_px[2],
-                "height": self.rect_px[3],
-            }
-        if self.output_size_px is not None:
-            payload["output_size_px"] = {
-                "width": self.output_size_px[0],
-                "height": self.output_size_px[1],
-            }
+        payload["score_mapping"] = asdict(self.score_mapping)
+        payload["workspaces"] = {
+            name: self._workspace_to_dict(workspace)
+            for name, workspace in self.workspaces.items()
+        }
         return payload
 
-    def _validate_manual_rect(self, frame_shape: Tuple[int, ...]) -> None:
-        rect = self.config.get("rect_px", {})
+    def _validate_manual_rect(
+        self,
+        workspace: WorkspaceDefinition,
+        config: Dict[str, Any],
+        frame_shape: Tuple[int, ...],
+    ) -> None:
+        rect = config.get("rect_px", {})
         x = int(rect.get("x", 0))
         y = int(rect.get("y", 0))
         width = int(rect.get("width", 0))
@@ -104,15 +207,20 @@ class WorkspaceService:
             self._fail("Workspace rectangle is outside frame bounds")
             raise ValueError("Workspace rectangle is outside frame bounds")
 
-        self.rect_px = (x, y, width, height)
-        self.status.width = width
-        self.status.height = height
+        workspace.rect_px = (x, y, width, height)
+        workspace.width = width
+        workspace.height = height
 
-    def _validate_manual_quad(self, frame_shape: Tuple[int, ...]) -> None:
+    def _validate_manual_quad(
+        self,
+        workspace: WorkspaceDefinition,
+        config: Dict[str, Any],
+        frame_shape: Tuple[int, ...],
+    ) -> None:
         import cv2
         import numpy as np
 
-        points = self.config.get("points_px", {})
+        points = config.get("points_px", {})
         required_keys = ["top_left", "top_right", "bottom_right", "bottom_left"]
         try:
             source_points = [points[key] for key in required_keys]
@@ -125,7 +233,7 @@ class WorkspaceService:
             self._fail("Workspace quad must contain four 2D points")
             raise ValueError("Workspace quad must contain four 2D points")
 
-        output_size = self.config.get("output_size_px", {})
+        output_size = config.get("output_size_px", {})
         output_width = int(output_size.get("width", 0))
         output_height = int(output_size.get("height", 0))
         if output_width <= 0 or output_height <= 0:
@@ -143,11 +251,59 @@ class WorkspaceService:
             [[0, 0], [output_width - 1, 0], [output_width - 1, output_height - 1], [0, output_height - 1]],
             dtype="float32",
         )
-        self.transform_matrix = cv2.getPerspectiveTransform(source_array, destination)
-        self.output_size_px = (output_width, output_height)
-        self.status.width = output_width
-        self.status.height = output_height
+        workspace.transform_matrix = cv2.getPerspectiveTransform(source_array, destination)
+        workspace.inverse_transform_matrix = cv2.getPerspectiveTransform(destination, source_array)
+        workspace.output_size_px = (output_width, output_height)
+        workspace.width = output_width
+        workspace.height = output_height
 
     def _fail(self, message: str) -> None:
         self.status.status = "ERROR"
         self.status.last_error = message
+
+    def _workspace_names(self) -> list[str]:
+        if "card" in self.config or "hand" in self.config:
+            names = [name for name in ("card", "hand") if name in self.config]
+            return names or ["card"]
+        return ["card"]
+
+    def _workspace_config(self, name: str) -> Dict[str, Any]:
+        if "card" in self.config or "hand" in self.config:
+            return dict(self.config.get(name) or {})
+        return dict(self.config) if name == "card" else {}
+
+    def _require_workspace(self, name: str) -> WorkspaceDefinition:
+        workspace = self.workspaces.get(name)
+        if workspace is None:
+            raise RuntimeError(f"Workspace {name!r} is not configured")
+        return workspace
+
+    def _workspace_to_dict(self, workspace: WorkspaceDefinition) -> Dict[str, Any]:
+        payload = {
+            "name": workspace.name,
+            "mode": workspace.mode,
+            "source_frame": workspace.source_frame,
+            "width": workspace.width,
+            "height": workspace.height,
+        }
+        if workspace.rect_px is not None:
+            payload["rect_px"] = {
+                "x": workspace.rect_px[0],
+                "y": workspace.rect_px[1],
+                "width": workspace.rect_px[2],
+                "height": workspace.rect_px[3],
+            }
+        if workspace.output_size_px is not None:
+            payload["output_size_px"] = {
+                "width": workspace.output_size_px[0],
+                "height": workspace.output_size_px[1],
+            }
+        return payload
+
+    def _perspective_point(self, point_xy: Tuple[float, float], matrix) -> Tuple[float, float]:
+        import cv2
+        import numpy as np
+
+        points = np.array([[[float(point_xy[0]), float(point_xy[1])]]], dtype="float32")
+        transformed = cv2.perspectiveTransform(points, matrix)
+        return (float(transformed[0][0][0]), float(transformed[0][0][1]))
