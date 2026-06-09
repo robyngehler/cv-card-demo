@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SKR · Visitenkarten-Scanner · Event-Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --black:#0a0a0a; --ink:#111; --paper:#ffffff;
+    --grey-1:#f4f4f4; --grey-2:#e3e6e7; --grey-3:#8d9396;
+    --blue:#39c1cd; --blue-deep:#1f96a3;
+    --scan:#39c1cd; --scan-soft:rgba(57,193,205,.22);
+    --font:"Figtree","Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+    --head:"Syne","Figtree",Helvetica,Arial,sans-serif;
+    --mono:"SF Mono",ui-monospace,"Roboto Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  html,body{margin:0;height:100%;background:#000;font-family:var(--font);color:var(--ink);overflow:hidden}
+  .viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
+  /* Feste 16:9-Bühne -> proportional skaliert -> nie Scrollbars */
+  .stage{width:1600px;height:900px;display:flex;transform-origin:center center;flex:0 0 auto;overflow:hidden}
+
+  /* ============ LINKS (1/3) ============ */
+  .left{flex:0 0 33.3333%;background:var(--paper);display:flex;flex-direction:column;
+    padding:44px 44px 40px;position:relative;border-right:2px solid var(--black);min-width:0}
+  .brand{display:flex;align-items:center;gap:16px;margin-bottom:6px}
+  .brand img{height:40px;display:block}
+  .brand .fallback{font-family:var(--head);font-weight:600;letter-spacing:.02em;font-size:26px}
+  .brand small{margin-left:auto;font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--grey-3)}
+  .panel-body{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:0}
+  .view{min-height:0}
+  .step-tag{font-family:var(--head);font-size:19px;font-weight:400;letter-spacing:normal;text-transform:none;color:var(--blue-deep);margin-bottom:18px}
+
+  /* Idle */
+  .idle h1{font-family:var(--head);font-size:44px;line-height:1.05;font-weight:400;margin:0 0 20px}
+  .idle p{font-size:20px;line-height:1.5;color:#3a3a3a;margin:0}
+  .pulse-card{margin-top:34px;width:172px;height:106px;border:2px dashed var(--blue);border-radius:14px;
+    display:flex;align-items:center;justify-content:center;color:var(--blue-deep);font-size:15px;font-weight:600;
+    text-align:center;animation:bob 2.2s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  .btn-dash{margin-top:30px;appearance:none;border:2px solid var(--black);background:#fff;color:var(--ink);
+    font-family:var(--font);font-weight:600;font-size:16px;padding:13px 20px;border-radius:12px;cursor:pointer;align-self:flex-start}
+  .btn-dash:active{transform:scale(.98)}
+
+  /* Greeting + Thanks */
+  .greet h1,.thanks h1{font-family:var(--head);font-size:66px;font-weight:400;margin:0 0 14px;letter-spacing:-.005em;line-height:1.02}
+  .greet h1 span,.thanks h1 span{color:var(--blue-deep)}
+  .greet .hi,.thanks .hi{font-size:26px;color:var(--grey-3);margin-bottom:8px}
+  .greet p,.thanks p{font-size:23px;line-height:1.48;color:#3a3a3a;margin:18px 0 0}
+  .greet .mail{font-family:var(--mono);font-size:16px;color:var(--grey-3);margin-top:30px;
+    border-top:2px solid var(--grey-2);padding-top:18px}
+
+  /* Question */
+  .q-progress{display:flex;gap:12px;margin-bottom:34px}
+  .q-progress .dot{flex:1;height:8px;border-radius:4px;background:var(--grey-2);overflow:hidden;position:relative}
+  .q-progress .dot.done{background:var(--blue)}
+  .q-progress .dot.active::after{content:"";position:absolute;inset:0;width:50%;background:var(--blue)}
+  .question h2{font-family:var(--head);font-size:35px;line-height:1.18;font-weight:400;margin:0 0 30px;min-height:122px}
+  .stars{display:flex;gap:12px;margin-bottom:16px}
+  .star{width:54px;height:54px;flex:0 0 auto}
+  .star svg{width:100%;height:100%;display:block}
+  .star path{fill:#fff;stroke:#c3c9cb;stroke-width:6}
+  .star.on path{fill:var(--blue);stroke:var(--blue)}
+  .rating-row{display:flex;align-items:baseline;gap:14px;margin-top:6px}
+  .rating-row .val{font-family:var(--head);font-size:52px;font-weight:500;color:var(--blue-deep)}
+  .rating-row .lbl{font-size:19px;color:var(--grey-3)}
+  .timer{margin-top:36px;display:flex;align-items:center;gap:22px;opacity:0;transition:opacity .25s;height:96px}
+  .timer.show{opacity:1}
+  .ring{position:relative;width:84px;height:84px;flex:0 0 auto}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .bg{stroke:var(--grey-2)}
+  .ring .fg{stroke:var(--blue);stroke-linecap:round;transition:stroke-dashoffset .08s linear}
+  .ring .num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--head);font-size:32px;font-weight:500;color:var(--blue-deep)}
+  .timer .t-txt{font-size:19px;color:#3a3a3a;line-height:1.4}
+  .timer .t-txt b{display:block;font-size:21px;color:var(--ink)}
+  .saved-flash{margin-top:22px;font-size:22px;font-weight:700;color:var(--blue-deep);opacity:0;transform:translateY(6px);transition:.3s}
+  .saved-flash.show{opacity:1;transform:none}
+
+  /* Dashboard (Infografik, fixiert ohne Scrollen) */
+  .dash{display:none;flex-direction:column;height:100%}
+  .dash.show{display:flex}
+  .dash h2{font-family:var(--head);font-size:33px;font-weight:400;margin:0 0 4px}
+  .dash .sub{font-size:16px;color:var(--grey-3);margin-bottom:16px}
+  .dash .grid{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+  .tile{flex:1;min-height:0;border:2px solid var(--grey-2);border-radius:16px;padding:12px 16px;display:flex;flex-direction:column;gap:6px}
+  .tile .t-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .tile .t-title{font-family:var(--font);font-weight:600;font-size:19px;line-height:1.1}
+  .tile .t-avg{font-family:var(--head);font-weight:500;font-size:36px;color:var(--blue-deep);line-height:1;white-space:nowrap}
+  .tile .t-avg i{font-size:15px;color:var(--grey-3);font-style:normal;font-weight:600}
+  .tile .t-stars{display:flex;gap:4px}
+  .tile .t-stars .s{width:22px;height:22px}
+  .tile .t-stars .s svg{width:100%;height:100%;display:block}
+  .tile .t-stars .s path{fill:#fff;stroke:#c3c9cb;stroke-width:6}
+  .tile .t-stars .s.on path{fill:var(--blue);stroke:var(--blue)}
+  .tile .bars{flex:1;min-height:0;display:flex;align-items:flex-end;gap:10px;margin-top:2px}
+  .tile .bars .col{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px}
+  .tile .bars .bar{width:100%;background:#cdeef2;border-radius:6px 6px 3px 3px;min-height:4px}
+  .tile .bars .bar.top{background:var(--blue)}
+  .tile .bars .bx{font-family:var(--head);font-weight:700;font-size:13px;color:var(--grey-3)}
+  .dash-foot{margin-top:14px;min-height:38px;display:flex;align-items:center}
+  .auto-next{display:flex;align-items:center;gap:11px;font-size:16px;color:var(--grey-3)}
+  .auto-next .pip{width:11px;height:11px;border-radius:50%;background:var(--blue);animation:blink 1.1s infinite}
+  .btn{appearance:none;border:2px solid var(--black);background:#fff;color:var(--ink);
+    font-family:var(--font);font-weight:600;font-size:16px;padding:13px 20px;border-radius:12px;cursor:pointer}
+  .btn:active{transform:scale(.98)}
+
+  /* ============ RECHTS (2/3) — Kamera: Draufsicht auf graue Tischplatte ============ */
+  .right{flex:1;background:#26282a;position:relative;overflow:hidden;color:#fff}
+  /* Kamera erfasst den ganzen Tisch -> Tischplatte füllt das komplette Bild */
+  .table{position:absolute;inset:0;overflow:hidden;
+    background:radial-gradient(130% 100% at 50% 38%, #dcdee0 0%, #c9cbcd 50%, #b6b8ba 82%, #a7a9ab 100%);
+    box-shadow:inset 0 0 180px rgba(0,0,0,.22)}
+  .table::before{content:"";position:absolute;inset:0;opacity:.05;pointer-events:none;
+    background-image:repeating-linear-gradient(0deg,rgba(0,0,0,.6) 0 1px,transparent 1px 3px)}
+  .cam-vignette{position:absolute;inset:0;pointer-events:none;z-index:9;
+    background:radial-gradient(120% 95% at 50% 45%,transparent 58%,rgba(0,0,0,.30))}
+
+  /* 5 Bewertungs-Sektionen als halbtransparentes Overlay über dem Kamerabild
+     (vertikale Linien + nach rechts zunehmende Blau-Flächen: links 1★ -> rechts 5★) */
+  .section{position:absolute;top:0;bottom:0;width:20%;z-index:5;
+    border-right:2px solid rgba(57,193,205,.55);
+    display:flex;flex-direction:column;align-items:center;padding-top:26px;transition:background .15s}
+  .section:last-child{border-right:0}
+  .section:nth-child(1){background:rgba(57,193,205,.06)}
+  .section:nth-child(2){background:rgba(57,193,205,.11)}
+  .section:nth-child(3){background:rgba(57,193,205,.16)}
+  .section:nth-child(4){background:rgba(57,193,205,.21)}
+  .section:nth-child(5){background:rgba(57,193,205,.27)}
+  .section .snum{font-family:var(--head);font-weight:500;font-size:42px;color:#235e66;line-height:1;
+    text-shadow:0 1px 2px rgba(255,255,255,.45)}
+  .section .st{display:flex;gap:3px;margin-top:11px}
+  .section .st svg{width:24px;height:24px;display:block}
+  .section .st path{fill:rgba(31,150,163,.6);stroke:none}
+  .section.active{background:rgba(57,193,205,.42)}
+  .section.active .snum{color:#0a5560}
+  .section.active .st path{fill:var(--blue-deep)}
+  .section .ring-out{position:absolute;inset:8px;border:4px solid var(--blue);border-radius:8px;opacity:0;
+    box-shadow:0 0 22px rgba(57,193,205,.5);transition:opacity .15s}
+  .section.active .ring-out{opacity:1}
+
+  .hud{position:absolute;top:24px;left:28px;right:28px;display:flex;align-items:center;gap:14px;
+    font-family:var(--mono);font-size:15px;letter-spacing:.03em;z-index:11}
+  .rec{display:flex;align-items:center;gap:9px;color:#fff;font-weight:700;background:rgba(0,0,0,.5);padding:7px 14px;border-radius:22px}
+  .rec .led{width:12px;height:12px;border-radius:50%;background:#ff4040;box-shadow:0 0 12px #ff4040;animation:blink 1.3s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  .hud .spacer{flex:1}
+  .hud .chip{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:7px 15px;color:#e7e9eb}
+  .hud .chip b{color:var(--scan)}
+
+  /* Tracking-Overlays */
+  .bbox{position:absolute;border:2px solid var(--scan);border-radius:6px;z-index:7;pointer-events:none;
+    box-shadow:0 0 0 1px rgba(0,0,0,.35),0 0 18px var(--scan-soft);transition:opacity .2s;opacity:0}
+  .bbox.show{opacity:1}
+  .bbox .tag{position:absolute;top:-30px;left:-2px;background:var(--scan);color:#05343a;font-family:var(--mono);
+    font-size:15px;font-weight:700;padding:4px 11px;border-radius:5px;white-space:nowrap}
+  .bbox .corner{position:absolute;width:13px;height:13px;border:2px solid var(--scan)}
+  .bbox .corner.tl{top:-2px;left:-2px;border-right:0;border-bottom:0}
+  .bbox .corner.tr{top:-2px;right:-2px;border-left:0;border-bottom:0}
+  .bbox .corner.bl{bottom:-2px;left:-2px;border-right:0;border-top:0}
+  .bbox .corner.br{bottom:-2px;right:-2px;border-left:0;border-top:0}
+  .bbox.hand{border-color:#5ad1ff;box-shadow:0 0 18px rgba(90,209,255,.28)}
+  .bbox.hand .tag{background:#5ad1ff;color:#05303a}
+  .bbox.hand .corner{border-color:#5ad1ff}
+
+  .scanline{position:absolute;left:0;right:0;height:70px;z-index:8;pointer-events:none;opacity:0;
+    background:linear-gradient(180deg,transparent,var(--scan-soft),transparent)}
+  .scanline.run{opacity:1;animation:scan 1.4s ease-in-out}
+  @keyframes scan{0%{top:16%}100%{top:78%}}
+
+  .hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:11;
+    font-family:var(--mono);font-size:15px;color:#2c2f31;background:rgba(255,255,255,.68);padding:8px 18px;border-radius:20px;white-space:nowrap}
+
+  .start-overlay{position:absolute;inset:0;z-index:12;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(14,15,16,.78);backdrop-filter:blur(2px);text-align:center;padding:24px}
+  .start-overlay h3{font-family:var(--head);font-size:34px;font-weight:400;margin:0 0 14px;color:#fff}
+  .start-overlay p{color:#b6bbbf;font-size:20px;max-width:560px;margin:0 0 32px;line-height:1.5}
+  .start-overlay.hide{display:none}
+  .big-btn{appearance:none;border:0;background:var(--scan);color:#05343a;font-family:var(--font);font-weight:700;
+    font-size:22px;padding:21px 42px;border-radius:16px;cursor:pointer;letter-spacing:.01em}
+  .big-btn:active{transform:scale(.98)}
+
+  .reset-fab{position:absolute;top:26px;right:28px;z-index:13;appearance:none;border:1px solid rgba(255,255,255,.28);
+    background:rgba(0,0,0,.42);color:#dfe2e4;font-family:var(--mono);font-size:14px;padding:9px 15px;border-radius:10px;cursor:pointer;display:none}
+
+  .card{position:absolute;width:188px;height:116px;border-radius:11px;z-index:6;
+    background:linear-gradient(135deg,#fff,#eef0f2);color:#111;cursor:grab;touch-action:none;
+    box-shadow:0 14px 30px rgba(0,0,0,.42);padding:16px 17px;user-select:none;display:none}
+  .card.dragging{cursor:grabbing;box-shadow:0 20px 44px rgba(0,0,0,.5)}
+  .card.gliding{transition:left .9s cubic-bezier(.4,0,.2,1), top .9s cubic-bezier(.4,0,.2,1)}
+  .card .nm{font-family:var(--head);font-weight:800;font-size:20px;letter-spacing:.01em}
+  .card .ml{font-family:var(--mono);font-size:13px;color:#555;margin-top:5px}
+  .card .ln{height:5px;background:#dcdfe2;border-radius:3px;margin-top:10px}
+  .card .ln.s{width:56%}
+  .card .logo-dot{position:absolute;right:15px;bottom:14px;width:30px;height:30px;border-radius:7px;background:var(--blue)}
+
+  .mock-badge{position:fixed;bottom:10px;left:12px;z-index:30;font-family:var(--mono);font-size:12px;color:#cfcfcf;
+    background:rgba(0,0,0,.55);padding:4px 10px;border-radius:7px}
+</style>
+</head>
+<body>
+<div class="viewport">
+<div class="stage">
+
+  <!-- ============ LINKS (1/3) ============ -->
+  <section class="left">
+    <div class="brand">
+      <img src="https://www.smartekirobotik.de/logos/SKR_oSchrift_black.svg" alt="SKR"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='inline'">
+      <span class="fallback" style="display:none">SKR</span>
+      <small>Event-Demo</small>
+    </div>
+
+    <div class="panel-body">
+
+      <!-- IDLE -->
+      <div class="idle view" id="view-idle">
+        <div class="step-tag">Smarte KI-basierte Robotik</div>
+        <h1>Lege deine Visitenkarte<br>auf den Tisch.</h1>
+        <p>Wir lesen deinen Namen aus und stellen dir vier kurze Fragen –<br>beantwortet allein durch die Position deiner Karte.</p>
+        <div class="pulse-card">Karte<br>auflegen</div>
+        <button class="btn-dash" id="btnShowDash">Tages-Dashboard ansehen</button>
+      </div>
+
+      <!-- GREETING -->
+      <div class="greet view" id="view-greet" style="display:none">
+        <div class="hi">Schön, dass du da bist</div>
+        <h1>Hallo <span id="greet-name">Anna</span></h1>
+        <p>Bewege deine Karte über die fünf Felder, um zu antworten –<br>1&nbsp;Stern links, 5&nbsp;Sterne rechts.</p>
+        <div class="mail">Erkannt: <span id="greet-mail">anna.schmidt@example.com</span></div>
+      </div>
+
+      <!-- QUESTION -->
+      <div class="question view" id="view-question" style="display:none">
+        <div class="q-progress" id="qProgress"></div>
+        <div class="step-tag" id="qCounter">Frage 1 von 4</div>
+        <h2 id="qText">—</h2>
+        <div class="stars" id="qStars"></div>
+        <div class="rating-row"><span class="val" id="qVal">1</span><span class="lbl">von 5 Sternen</span></div>
+
+        <div class="timer" id="qTimer">
+          <div class="ring">
+            <svg width="84" height="84" viewBox="0 0 72 72">
+              <circle class="bg" cx="36" cy="36" r="31" fill="none" stroke-width="6"></circle>
+              <circle class="fg" id="ringFg" cx="36" cy="36" r="31" fill="none" stroke-width="6"
+                      stroke-dasharray="194.78" stroke-dashoffset="0"></circle>
+            </svg>
+            <div class="num" id="ringNum">3</div>
+          </div>
+          <div class="t-txt"><b>Karte ruhig halten …</b>Antwort wird gleich gespeichert.</div>
+        </div>
+        <div class="saved-flash" id="savedFlash">✓ Antwort gespeichert</div>
+      </div>
+
+      <!-- THANKS -->
+      <div class="thanks view" id="view-thanks" style="display:none">
+        <div class="hi">Geschafft</div>
+        <h1>Danke <span id="thanks-name">Anna</span></h1>
+        <p>Lass uns gern in Kontakt bleiben.<br>Wir melden uns bei dir.</p>
+      </div>
+
+      <!-- DASHBOARD -->
+      <div class="dash view" id="view-dash">
+        <h2>KI &amp; Robotik – heute</h2>
+        <div class="sub" id="dashSub">Alle Antworten von heute</div>
+        <div class="grid" id="dashGrid"></div>
+        <div class="dash-foot">
+          <div class="auto-next" id="autoNext"><span class="pip"></span>Nächster Robotik-Enthusiast startet automatisch …</div>
+          <button class="btn" id="btnBack" style="display:none">Zurück zur Demo</button>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ RECHTS (2/3) — Kamera (Draufsicht) ============ -->
+  <section class="right" id="cam">
+    <div class="table" id="table">
+      <!-- 5 Sektionen werden per JS erzeugt, danach folgt die Karte -->
+      <div class="card" id="card">
+        <div class="nm" id="cardNm">Anna Schmidt</div>
+        <div class="ml" id="cardMl">anna.schmidt@example.com</div>
+        <div class="ln"></div><div class="ln s"></div>
+        <div class="logo-dot"></div>
+      </div>
+    </div>
+    <div class="cam-vignette"></div>
+
+    <button class="reset-fab" id="resetFab">⟲ Demo zurücksetzen</button>
+
+    <div class="hud">
+      <span class="rec"><span class="led"></span> REC · LIVE</span>
+      <span class="spacer"></span>
+      <span class="chip">Kamera <b>Top-Down</b></span>
+      <span class="chip">Modell <b>SKR-Vision v0.9</b></span>
+      <span class="chip">Objekte <b id="objCount">0</b></span>
+    </div>
+
+    <!-- Tracking-Overlays -->
+    <div class="bbox" id="boxCard"><span class="tag" id="boxCardTag">Visitenkarte 0%</span>
+      <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span></div>
+    <div class="bbox hand" id="boxHand"><span class="tag">Hand</span>
+      <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span></div>
+
+    <div class="scanline" id="scanline"></div>
+
+    <div class="hint" id="hint">Bereit – Visitenkarte auflegen.</div>
+
+    <!-- Startoverlay -->
+    <div class="start-overlay" id="startOverlay">
+      <h3>Visitenkarten-Scanner · Demo</h3>
+      <p>Im echten Aufbau erkennt die Top-Down-Kamera Karte und Hand automatisch. Für die Demo legst du die Karte per Klick auf.</p>
+      <button class="big-btn" id="placeBtn">▶ Visitenkarte auflegen</button>
+    </div>
+  </section>
+</div>
+</div>
+
+<div class="mock-badge">SKR · interaktives Mockup — Vision-Tracking simuliert</div>
+
+<script>
+/* =========================================================
+   SKR Visitenkarten-Scanner — interaktiver Event-Prototyp
+   ========================================================= */
+const QUESTIONS = [
+  "Wie gut schätzt du dein Wissen über Künstliche Intelligenz ein?",
+  "Wie intensiv nutzt du Künstliche Intelligenz bereits im Job?",
+  "Wie häufig nutzt du KI-Anwendungen und -Tools?",
+  "Wie sehr sind Roboter bereits Teil deines Haushalts?"
+];
+const SHORT = ["KI-Wissen","KI im Job","Nutzung KI-Tools","Roboter im Haushalt"];
+const DEMO = { name:"Anna Schmidt", mail:"anna.schmidt@example.com" };
+
+const STILL_DEBOUNCE = 450;        // ms bis "ruhig" erkannt wird
+const COUNTDOWN = 3000;            // 3 Sekunden
+const RING_LEN = 2*Math.PI*31;
+const TABLE_INSET = 0;             // Kamera erfasst den ganzen Tisch (Tisch = ganzes Bild)
+const GREET_MS = 5200;             // Lesezeit für die Anweisungen vor dem Start
+const GLIDE_MS = 900;              // Dauer der Auto-Bewegung der Karte je Frage
+// Demo: pro Frage liegt die Karte woanders (Sektion + vertikale Lage)
+const DEMO_POS = [[3,0.42],[4,0.62],[2,0.40],[5,0.66]];
+
+// ---- Tagesdaten (simuliert) ----
+function seedDay(n){
+  const data=[], centers=[3.1,2.4,3.6,1.7];
+  for(let i=0;i<n;i++){
+    data.push(centers.map(c=>Math.max(1,Math.min(5,Math.round(c+(Math.random()-0.5)*2.6)))));
+  }
+  return data;
+}
+let dayData = seedDay(37);
+
+// ---- State ----
+let qIndex=0, currentStar=3, recorded=false, dragging=false;
+let lastMoveTime=0, countdownActive=false, sessionAnswers=[];
+let phase="idle";                  // idle | greeting | question | thanks | dashboard
+let loopStarted=false, flowTimer=null, glideT=null, S=1, grabDX=0, grabDY=0;
+
+// ---- DOM ----
+const $=id=>document.getElementById(id);
+const card=$("card"), cam=$("cam"), table=$("table");
+const boxCard=$("boxCard"), boxHand=$("boxHand"), boxCardTag=$("boxCardTag");
+const STAR_SVG='<svg viewBox="0 0 100 100"><path d="M50 6 L62 38 L96 38 L68 58 L79 92 L50 72 L21 92 L32 58 L4 38 L38 38 Z"/></svg>';
+
+// ---- 16:9-Bühne skalieren ----
+function fit(){
+  S=Math.min(window.innerWidth/1600, window.innerHeight/900);
+  document.querySelector(".stage").style.transform="scale("+S+")";
+}
+window.addEventListener("resize",fit); fit();
+
+// ---- Aufbau: Fragen-Sterne, Fortschritt, Sektionen ----
+function buildStars(){
+  $("qStars").innerHTML="";
+  for(let i=0;i<5;i++){const d=document.createElement("div");d.className="star";d.innerHTML=STAR_SVG;$("qStars").appendChild(d);}
+}
+function buildProgress(){
+  $("qProgress").innerHTML="";
+  for(let i=0;i<QUESTIONS.length;i++){const d=document.createElement("div");d.className="dot";$("qProgress").appendChild(d);}
+}
+function buildSections(){
+  for(let s=1;s<=5;s++){
+    const d=document.createElement("div");d.className="section";d.dataset.star=s;d.style.left=((s-1)*20)+"%";
+    d.innerHTML='<div class="ring-out"></div><span class="snum">'+s+'</span><div class="st">'+STAR_SVG.repeat(s)+'</div>';
+    table.insertBefore(d, card);
+  }
+}
+buildStars(); buildProgress(); buildSections();
+const sectionEls = table.querySelectorAll(".section");
+function highlightSection(star){ sectionEls.forEach(el=>el.classList.toggle("active", +el.dataset.star===star)); }
+function clearSections(){ sectionEls.forEach(el=>el.classList.remove("active")); }
+
+// ---- View-Umschaltung ----
+function show(view){
+  [["idle","view-idle"],["greet","view-greet"],["question","view-question"],["thanks","view-thanks"]]
+    .forEach(([k,id])=>{const el=$(id); if(el) el.style.display=(view===k)?"block":"none";});
+  $("view-dash").classList.toggle("show", view==="dash");
+}
+
+// ---- Geometrie (Karte frei in 2D auf dem Tisch) ----
+function tableW(){ return table.clientWidth; }   // Design-px (unskaliert)
+function tableH(){ return table.clientHeight; }
+function starFromCardCenter(){
+  const cx=(parseFloat(card.style.left)||0)+card.offsetWidth/2;
+  let t=cx/tableW(); t=Math.max(0,Math.min(0.99999,t));
+  return Math.floor(t*5)+1;
+}
+function setCardCenter(clientX,clientY){
+  const r=table.getBoundingClientRect();
+  const cw=card.offsetWidth, ch=card.offsetHeight, lw=tableW(), lh=tableH();
+  let left=(clientX-r.left)/S - cw/2, top=(clientY-r.top)/S - ch/2;
+  left=Math.max(6,Math.min(lw-cw-6,left));
+  top =Math.max(6,Math.min(lh-ch-6,top));
+  card.style.left=left+"px"; card.style.top=top+"px";
+}
+function placeCardAt(star, fracY){
+  const cw=card.offsetWidth, ch=card.offsetHeight, lw=tableW(), lh=tableH();
+  const cx=((star-0.5)/5)*lw, cy=(fracY!=null?fracY:0.5)*lh;
+  card.style.left=Math.max(6,Math.min(lw-cw-6, cx-cw/2))+"px";
+  card.style.top =Math.max(6,Math.min(lh-ch-6, cy-ch/2))+"px";
+  currentStar=star; highlightSection(star); updateBoxes();
+}
+
+// ---- Tracking-Overlays (aus lokaler Kartenposition) ----
+function updateBoxes(){
+  // computed style -> folgt der Karte auch während der Auto-Gleitbewegung
+  const cs=getComputedStyle(card);
+  const cl=parseFloat(cs.left)||0, ct=parseFloat(cs.top)||0;
+  const cw=card.offsetWidth, ch=card.offsetHeight;
+  const L=TABLE_INSET+cl, T=TABLE_INSET+ct;
+  boxCard.style.left=(L-7)+"px"; boxCard.style.top=(T-7)+"px";
+  boxCard.style.width=(cw+14)+"px"; boxCard.style.height=(ch+14)+"px";
+  const conf=dragging?(87+Math.floor(Math.random()*6)):(96+Math.floor(Math.random()*4));
+  boxCardTag.textContent="Visitenkarte "+conf+"%";
+  boxHand.style.left=(L+cw*0.26)+"px"; boxHand.style.top=(T-74)+"px";
+  boxHand.style.width=(cw*0.6)+"px"; boxHand.style.height="100px";
+}
+
+// ---- Sterne im Panel ----
+function renderStars(){
+  document.querySelectorAll("#qStars .star").forEach((el,i)=>el.classList.toggle("on",i<currentStar));
+  $("qVal").textContent=currentStar;
+}
+
+// ---- Ablauf ----
+function placeCard(){
+  $("startOverlay").classList.add("hide");
+  $("resetFab").style.display="block";
+  card.style.display="block";
+  placeCardAt(3,0.5);
+  $("objCount").textContent="1";
+  boxCard.classList.add("show");
+  const sl=$("scanline"); sl.classList.remove("run"); void sl.offsetWidth; sl.classList.add("run");
+  boxCardTag.textContent="Lese Karte …";
+  clearTimeout(flowTimer);
+  flowTimer=setTimeout(()=>{ sl.classList.remove("run"); greet(); }, 1500);
+  if(!loopStarted){ loopStarted=true; requestAnimationFrame(loop); }
+}
+function greet(){
+  phase="greeting";
+  $("greet-name").textContent=DEMO.name.split(" ")[0];
+  $("greet-mail").textContent=DEMO.mail;
+  $("cardNm").textContent=DEMO.name; $("cardMl").textContent=DEMO.mail;
+  show("greet");
+  $("hint").textContent="Erkannt: "+DEMO.name+" · "+DEMO.mail;
+  clearTimeout(flowTimer);
+  flowTimer=setTimeout(()=>startQuestion(0), GREET_MS);
+}
+function glideCardTo(star,fracY){
+  card.classList.add("gliding");
+  placeCardAt(star,fracY); renderStars();
+  // Timer erst nach Abschluss der Bewegung starten
+  lastMoveTime=performance.now()+GLIDE_MS;
+  clearTimeout(glideT);
+  glideT=setTimeout(()=>card.classList.remove("gliding"), GLIDE_MS+60);
+}
+function startQuestion(i){
+  qIndex=i; recorded=false; phase="question";
+  const [ds,dy]=DEMO_POS[i % DEMO_POS.length];
+  glideCardTo(ds,dy);
+  $("qText").textContent=QUESTIONS[i];
+  $("qCounter").textContent="Frage "+(i+1)+" von "+QUESTIONS.length;
+  document.querySelectorAll("#qProgress .dot").forEach((d,k)=>{ d.className="dot"+(k<i?" done":k===i?" active":""); });
+  $("savedFlash").classList.remove("show");
+  $("qTimer").classList.remove("show");
+  countdownActive=false; lastMoveTime=performance.now();
+  show("question");
+  $("hint").textContent="Karte frei auf dem Tisch bewegen – die Spalte bestimmt die Sterne.";
+  boxHand.classList.remove("show");
+}
+function recordAnswer(){
+  recorded=true; countdownActive=false;
+  $("qTimer").classList.remove("show");
+  sessionAnswers[qIndex]=currentStar;
+  const f=$("savedFlash"); f.textContent="✓ "+currentStar+" Sterne gespeichert"; f.classList.add("show");
+  boxHand.classList.remove("show");
+  clearTimeout(flowTimer);
+  flowTimer=setTimeout(()=>{ (qIndex+1<QUESTIONS.length) ? startQuestion(qIndex+1) : finish(); }, 1100);
+}
+function finish(){
+  dayData.push(sessionAnswers.slice());
+  phase="thanks";
+  card.style.display="none"; boxCard.classList.remove("show"); boxHand.classList.remove("show");
+  clearSections(); $("objCount").textContent="0";
+  $("thanks-name").textContent=DEMO.name.split(" ")[0];
+  show("thanks");
+  $("hint").textContent="Danke fürs Mitmachen!";
+  clearTimeout(flowTimer);
+  flowTimer=setTimeout(()=>showDashboard(true), 3800);
+}
+function showDashboard(auto){
+  phase="dashboard";
+  card.style.display="none"; boxCard.classList.remove("show"); boxHand.classList.remove("show");
+  clearSections(); $("objCount").textContent="0";
+  renderDashboard(); show("dash");
+  clearTimeout(flowTimer);
+  if(auto){
+    $("autoNext").style.display="flex"; $("btnBack").style.display="none";
+    $("hint").textContent="Auswertung – weiter automatisch.";
+    flowTimer=setTimeout(resetIdle, 5000);
+  } else {
+    $("autoNext").style.display="none"; $("btnBack").style.display="block";
+    $("hint").textContent="Tages-Dashboard – jederzeit zwischendurch.";
+  }
+}
+function resetIdle(){
+  clearTimeout(flowTimer);
+  sessionAnswers=[]; phase="idle";
+  card.style.display="none"; boxCard.classList.remove("show"); boxHand.classList.remove("show");
+  clearSections(); $("objCount").textContent="0";
+  $("startOverlay").classList.remove("hide"); $("resetFab").style.display="none";
+  $("hint").textContent="Bereit – Visitenkarte auflegen.";
+  show("idle");
+}
+
+// ---- Bewegungs-/Timer-Loop ----
+function loop(now){
+  if(card.style.display!=="none") updateBoxes();
+  if(phase==="question" && !recorded){
+    const still = now - lastMoveTime;
+    if(still > STILL_DEBOUNCE){
+      const remain = Math.max(0, COUNTDOWN - (still - STILL_DEBOUNCE));
+      $("qTimer").classList.add("show");
+      $("ringFg").style.strokeDashoffset = (RING_LEN*(1-remain/COUNTDOWN)).toFixed(1);
+      $("ringNum").textContent = Math.ceil(remain/1000)||0;
+      countdownActive=true;
+      if(remain<=0) recordAnswer();
+    } else if(countdownActive){
+      $("qTimer").classList.remove("show"); countdownActive=false;
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---- Drag (Maus + Touch), frei in 2D ----
+function moveCardTo(x,y){
+  setCardCenter(x,y);
+  const s=starFromCardCenter();
+  if(s!==currentStar){ currentStar=s; highlightSection(s); if(phase==="question") renderStars(); }
+  lastMoveTime=performance.now();
+}
+card.addEventListener("pointerdown",e=>{
+  if(phase!=="question" && phase!=="greeting") return;
+  clearTimeout(glideT); card.classList.remove("gliding");   // Auto-Bewegung sofort stoppen
+  dragging=true; card.classList.add("dragging"); card.setPointerCapture(e.pointerId);
+  const r=table.getBoundingClientRect();
+  const cs=getComputedStyle(card);
+  const cl=parseFloat(cs.left)||0, ct=parseFloat(cs.top)||0;
+  card.style.left=cl+"px"; card.style.top=ct+"px";
+  grabDX=e.clientX-(r.left+(cl+card.offsetWidth/2)*S);
+  grabDY=e.clientY-(r.top+(ct+card.offsetHeight/2)*S);
+  boxHand.classList.add("show"); lastMoveTime=performance.now();
+});
+window.addEventListener("pointermove",e=>{ if(dragging) moveCardTo(e.clientX-grabDX, e.clientY-grabDY); });
+window.addEventListener("pointerup",()=>{
+  if(!dragging) return;
+  dragging=false; card.classList.remove("dragging"); lastMoveTime=performance.now();
+  setTimeout(()=>{ if(!dragging) boxHand.classList.remove("show"); }, 600);
+});
+
+// ---- Dashboard (Infografik) ----
+function dist(qi){ const d=[0,0,0,0,0]; dayData.forEach(r=>{ if(r[qi]) d[r[qi]-1]++; }); return d; }
+function avg(qi){ let s=0,n=0; dayData.forEach(r=>{ if(r[qi]){s+=r[qi];n++;} }); return n?s/n:0; }
+function starRow(n){ let h=""; for(let i=1;i<=5;i++) h+='<span class="s'+(i<=n?" on":"")+'">'+STAR_SVG+'</span>'; return h; }
+function renderDashboard(){
+  $("dashSub").textContent = dayData.length+" Robotik-Enthusiast:innen heute";
+  const grid=$("dashGrid"); grid.innerHTML="";
+  QUESTIONS.forEach((q,qi)=>{
+    const a=avg(qi), d=dist(qi), max=Math.max(...d,1), rnd=Math.max(1,Math.round(a));
+    let bars="";
+    for(let i=0;i<5;i++){
+      bars+='<div class="col"><div class="bar'+(d[i]===max?" top":"")+'" style="height:'+Math.round(d[i]/max*100)+'%"></div><span class="bx">'+(i+1)+'</span></div>';
+    }
+    const t=document.createElement("div"); t.className="tile";
+    t.innerHTML='<div class="t-head"><span class="t-title">'+SHORT[qi]+'</span>'+
+                '<span class="t-avg">'+a.toFixed(1)+'<i>/5</i></span></div>'+
+                '<div class="t-stars">'+starRow(rnd)+'</div>'+
+                '<div class="bars">'+bars+'</div>';
+    grid.appendChild(t);
+  });
+}
+
+// ---- Excel-Export (versteckt: Taste "E") ----
+function exportXlsx(){
+  if(typeof XLSX==="undefined") return;
+  const wb=XLSX.utils.book_new();
+  const head=["Enthusiast", ...QUESTIONS.map((q,i)=>"F"+(i+1)+" "+SHORT[i])];
+  const rows=dayData.map((r,i)=>[ "E"+String(i+1).padStart(3,"0"), ...r ]);
+  const ws1=XLSX.utils.aoa_to_sheet([head,...rows]);
+  ws1["!cols"]=[{wch:12},{wch:16},{wch:16},{wch:18},{wch:20}];
+  XLSX.utils.book_append_sheet(wb,ws1,"Antworten");
+  const sum=[["Frage","Ø Sterne","1★","2★","3★","4★","5★","Antworten"]];
+  QUESTIONS.forEach((q,qi)=>{ const d=dist(qi); sum.push([q,Number(avg(qi).toFixed(2)),...d,d.reduce((a,b)=>a+b,0)]); });
+  const ws2=XLSX.utils.aoa_to_sheet(sum);
+  ws2["!cols"]=[{wch:54},{wch:10},{wch:6},{wch:6},{wch:6},{wch:6},{wch:6},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws2,"Auswertung");
+  const d=new Date(), pad=n=>String(n).padStart(2,"0");
+  XLSX.writeFile(wb,`SKR_Visitenkarten_Auswertung_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.xlsx`);
+}
+window.addEventListener("keydown",e=>{ if((e.key==="e"||e.key==="E")&&!e.metaKey&&!e.ctrlKey&&!e.altKey) exportXlsx(); });
+
+// ---- Steuerung ----
+$("placeBtn").addEventListener("click",placeCard);
+$("btnShowDash").addEventListener("click",()=>showDashboard(false));
+$("btnBack").addEventListener("click",resetIdle);
+$("resetFab").addEventListener("click",resetIdle);
+
+// init
+show("idle");
+</script>
+</body>
+</html>
