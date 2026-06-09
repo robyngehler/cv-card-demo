@@ -24,6 +24,10 @@ class IdleNoCardState:
             self.context.logger.info("System is idle and waiting for a card")
 
         while True:
+            forced_state = self.context.runtime.pop("force_state", None)
+            if forced_state:
+                return forced_state
+
             camera_service = self.context.get_service("camera", default=None)
             if camera_service is None or not getattr(camera_service, "opened", False):
                 if self.context.logger:
@@ -34,16 +38,23 @@ class IdleNoCardState:
 
             detector = self.context.get_service("detector", default=None)
             ui_service = self.context.get_service("ui", default=None)
+            configure_mode = self.context.runtime.get("ui_mode") == "CONFIGURE_CAMERA"
 
             try:
                 full_frame = camera_service.read_frame(timeout_s=0.5)
                 frame, scale_x, scale_y = make_live_frame(full_frame, self.context.config)
                 self.context.runtime["last_frame"] = full_frame
                 self.context.runtime["last_live_frame"] = frame
+                self.context.runtime["last_live_frame_ts"] = time.time()
                 self.context.runtime["live_to_full_scale"] = {
                     "x": scale_x,
                     "y": scale_y,
                 }
+
+                if configure_mode:
+                    self.context.runtime["substate"] = "CAMERA_CONFIG_PREVIEW"
+                    time.sleep(self.poll_interval)
+                    continue
 
                 if detector is not None:
                     result = detector.detect(frame, state_name=self.name)

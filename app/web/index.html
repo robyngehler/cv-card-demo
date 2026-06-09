@@ -7,145 +7,93 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="screen-bg"></div>
+  <div class="atmo-grid"></div>
   <div class="shell">
     <header class="app-header">
       <div>
         <p class="eyebrow">CV Card Demo</p>
-        <h1>Interaction Console</h1>
+        <h1>Booth Interaction Console</h1>
       </div>
-      <div class="header-status" id="connection-pill">CONNECTING</div>
+      <div class="header-actions">
+        <div class="header-status" id="connection-pill">CONNECTING</div>
+        <div class="mode-toggle" role="group" aria-label="Runtime mode">
+          <button id="mode-run" class="mode-btn active" type="button">Run</button>
+          <button id="mode-configure" class="mode-btn" type="button">Configure Camera</button>
+        </div>
+        <button id="toggle-diagnostics" class="diag-btn" type="button">Diagnostics</button>
+      </div>
     </header>
 
-    <nav class="tabs" aria-label="Main Navigation">
-      <button class="tab-button active" data-tab="questionnaire" type="button">Questionnaire</button>
-      <button class="tab-button" data-tab="debug" type="button">Debug</button>
-      <button class="tab-button" data-tab="control" type="button">Control</button>
-    </nav>
-
-    <main class="tab-shell">
-      <section id="tab-questionnaire" class="tab-panel active" role="tabpanel">
-        <div class="question-hero">
-          <div>
-            <p class="section-label">Visitor Experience</p>
-            <h2 id="question-label">Place a business card to begin</h2>
-            <p id="identity-message" class="status-line">System starting...</p>
+    <main class="main-shell">
+      <section id="run-view" class="panel run-layout">
+        <article class="live-card">
+          <div class="panel-head">
+            <h2>Live Interaction</h2>
+            <span id="run-frame-age" class="age-pill">no frame</span>
           </div>
-          <div class="phase-badge-wrap">
-            <div class="phase-badge">
-              <span>Current Phase</span>
-              <strong id="phase-value">WAIT_FOR_MOVEMENT</strong>
+          <div class="live-wrap">
+            <img id="run-live-image" class="live-image" alt="Live run stream" />
+            <div id="run-countdown-overlay" class="countdown-overlay hidden">
+              <div id="run-countdown-value" class="countdown-value">--</div>
+              <p id="run-countdown-title">Hold still</p>
             </div>
           </div>
-        </div>
+        </article>
 
-        <div class="score-panel">
-          <div class="meter" aria-label="Live score">
-            <div id="meter-fill" class="meter-fill"></div>
+        <article class="question-card">
+          <p class="section-label">Questionnaire</p>
+          <h3 id="run-question-label">Place a business card to begin</h3>
+          <p id="run-message" class="status-line">System starting...</p>
+
+          <div class="score-meter">
+            <div id="run-meter-fill" class="score-meter-fill"></div>
           </div>
           <div class="meter-scale">
-            <span id="min-label">0</span>
-            <span>Business card controls score</span>
-            <span id="max-label">10</span>
+            <span id="run-min-label">0</span>
+            <span id="run-score-value">--</span>
+            <span id="run-max-label">10</span>
           </div>
-        </div>
 
-        <div class="question-metrics">
-          <article class="metric-card">
-            <span>Rating</span>
-            <strong id="score-value">--</strong>
-          </article>
-          <article class="metric-card">
-            <span>Fusion</span>
-            <strong id="fusion-value">NO_TARGET</strong>
-          </article>
-          <article class="metric-card">
-            <span>Source</span>
-            <strong id="source-value">waiting</strong>
-          </article>
-          <article class="metric-card">
-            <span>State</span>
-            <strong id="state-value">BOOT</strong>
-          </article>
-        </div>
-
-        <div id="countdown-shell" class="countdown-shell hidden" aria-live="polite">
-          <div class="countdown-ring">
-            <svg viewBox="0 0 120 120" class="ring-svg" aria-hidden="true">
-              <circle cx="60" cy="60" r="52" class="ring-track"></circle>
-              <circle cx="60" cy="60" r="52" class="ring-progress" id="ring-progress"></circle>
-            </svg>
-            <div class="countdown-core">
-              <div id="countdown-value" class="countdown-value">--</div>
-            </div>
+          <div class="pill-row">
+            <span class="pill">phase: <strong id="pill-phase">WAIT_FOR_MOVEMENT</strong></span>
+            <span class="pill">source: <strong id="pill-source">idle</strong></span>
+            <span class="pill">fusion: <strong id="pill-fusion">NO_TARGET</strong></span>
+            <span class="pill">conf: <strong id="pill-confidence">--</strong></span>
           </div>
-          <div>
-            <p class="countdown-title" id="countdown-title">Locking answer</p>
-            <p class="countdown-copy" id="countdown-copy">Keeping score fixed while we capture the card.</p>
-          </div>
-        </div>
-
-        <p id="detail-line" class="detail-line">Waiting for live score.</p>
+        </article>
       </section>
 
-      <section id="tab-debug" class="tab-panel" role="tabpanel">
-        <div class="debug-grid">
-          <article class="card">
-            <div class="card-head">
-              <h3>Live Visual Panel</h3>
-              <span id="debug-frame-age">no frame</span>
-            </div>
-            <div class="debug-frame-wrap">
-              <img id="debug-frame" class="debug-frame" alt="Tracking debug overlay" />
-              <div id="debug-frame-placeholder" class="debug-frame-placeholder">No debug frame available (204)</div>
-            </div>
-          </article>
+      <section id="configure-view" class="panel configure-layout hidden">
+        <article class="configure-controls">
+          <div class="panel-head">
+            <h2>Camera Settings</h2>
+            <button id="refresh-camera-settings" class="btn ghost" type="button">Refresh</button>
+          </div>
+          <div id="camera-controls" class="controls-grid"></div>
+          <div class="control-actions">
+            <button id="apply-camera-settings" class="btn" type="button">Apply</button>
+            <button id="restart-camera" class="btn warn" type="button">Restart Camera</button>
+          </div>
+          <p id="configure-result" class="result-line">No command sent yet.</p>
+        </article>
 
-          <article class="card">
-            <div class="card-head">
-              <h3>Runtime State</h3>
-            </div>
-            <dl class="kv-grid" id="runtime-kv"></dl>
-          </article>
-
-          <article class="card full-row">
-            <div class="card-head">
-              <h3>Frontend Timeline</h3>
-            </div>
-            <ul id="timeline" class="timeline"></ul>
-          </article>
-        </div>
-      </section>
-
-      <section id="tab-control" class="tab-panel" role="tabpanel">
-        <div class="control-grid">
-          <article class="card">
-            <div class="card-head">
-              <h3>Camera Controls</h3>
-              <button id="refresh-controls" class="btn ghost" type="button">Refresh</button>
-            </div>
-            <form id="camera-form" class="control-form"></form>
-            <div class="control-actions">
-              <button id="apply-controls" class="btn" type="button">Apply Settings</button>
-              <button id="restart-camera" class="btn warn" type="button">Restart Camera</button>
-            </div>
-            <p id="control-result" class="control-result">No changes applied yet.</p>
-          </article>
-
-          <article class="card">
-            <div class="card-head">
-              <h3>Debug Refresh</h3>
-            </div>
-            <label class="range-control" for="debug-fps">
-              Debug frame refresh rate
-              <input id="debug-fps" type="range" min="1" max="10" step="1" value="5" />
-              <span id="debug-fps-value">5 Hz</span>
-            </label>
-            <p class="subtle">Debug frame polling runs only while the Debug tab is visible.</p>
-          </article>
-        </div>
+        <article class="live-card">
+          <div class="panel-head">
+            <h2>Configure Preview</h2>
+            <span id="configure-frame-age" class="age-pill">no frame</span>
+          </div>
+          <div class="live-wrap">
+            <img id="configure-live-image" class="live-image" alt="Live configure stream" />
+          </div>
+        </article>
       </section>
     </main>
+
+    <aside id="diagnostics-drawer" class="diagnostics hidden">
+      <div id="diagnostics-summary" class="diagnostics-summary"></div>
+      <ul id="diagnostics-timeline" class="diagnostics-timeline"></ul>
+      <pre id="diagnostics-json" class="diagnostics-json"></pre>
+    </aside>
   </div>
   <script type="module" src="app.js"></script>
 </body>

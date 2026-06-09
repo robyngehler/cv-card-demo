@@ -48,6 +48,17 @@ class StateMachine:
                     )
                 self.current_state_instance.enter()
 
+            forced_state = self.context.runtime.pop("force_state", None)
+            if forced_state:
+                self.current_state_instance.exit()
+                if self.context.logger:
+                    self.context.logger.info(
+                        f"STATE_TRANSITION old_state={self.current_state_instance.name} new_state={forced_state} reason=forced"
+                    )
+                self.current_state = forced_state
+                self.current_state_instance = None
+                continue
+
             next_state = self.current_state_instance.run()
             if next_state is None:
                 continue
