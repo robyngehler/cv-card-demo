@@ -7,6 +7,8 @@ server:
   host: "0.0.0.0"
   port: 8000
   ui_static_dir: "./app/web"
+  ui_events_interval_s: 0.33
+  live_stream_jpeg_quality: 65
 
 boot:
   next_state: "INIT_CAM"

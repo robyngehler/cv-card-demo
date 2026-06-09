@@ -45,6 +45,14 @@ class TrackingState:
         4. If lost > threshold: transition back to IDLE_NO_CARD
         """
         self.context.runtime["substate"] = "TRACKING_ACTIVE"
+
+        if self.context.runtime.get("ui_mode") == "CONFIGURE_CAMERA":
+            self.context.runtime["substate"] = "CAMERA_CONFIG_PAUSED"
+            return "IDLE_NO_CARD"
+
+        forced_state = self.context.runtime.pop("force_state", None)
+        if forced_state:
+            return forced_state
         
         try:
             camera = self.context.get_service("camera")
@@ -74,6 +82,7 @@ class TrackingState:
             #self.context.runtime["last_frame"] = frame
             self.context.runtime["last_frame"] = full_frame
             self.context.runtime["last_live_frame"] = frame
+            self.context.runtime["last_live_frame_ts"] = time.time()
             self.context.runtime["live_to_full_scale"] = {
                 "x": scale_x,
                 "y": scale_y,

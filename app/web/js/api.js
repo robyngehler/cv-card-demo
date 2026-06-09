@@ -8,7 +8,16 @@ export async function getJson(url, options = {}) {
   return { ok: response.ok, status: response.status, data };
 }
 
-export function openWebSocket(path) {
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  return new WebSocket(`${protocol}://${window.location.host}${path}`);
+export async function postJson(url, payload = {}) {
+  return getJson(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+export function openUiEvents() {
+  return new EventSource("/api/ui/events");
 }

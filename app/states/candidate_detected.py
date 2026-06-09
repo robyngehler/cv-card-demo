@@ -55,6 +55,14 @@ class CandidateDetectedState:
             "IDLE_NO_CARD" - card lost for >M frames
             None - stay in this state
         """
+        if self.context.runtime.get("ui_mode") == "CONFIGURE_CAMERA":
+            self.context.runtime["substate"] = "CAMERA_CONFIG_PAUSED"
+            return "IDLE_NO_CARD"
+
+        forced_state = self.context.runtime.pop("force_state", None)
+        if forced_state:
+            return forced_state
+
         camera = self.context.get_service("camera")
         detector = self.context.get_service("detector")
         questionnaire = self.context.get_service("questionnaire", default=None)
@@ -71,6 +79,7 @@ class CandidateDetectedState:
         frame, scale_x, scale_y = make_live_frame(full_frame, self.context.config)
         self.context.runtime["last_frame"] = full_frame
         self.context.runtime["last_live_frame"] = frame
+        self.context.runtime["last_live_frame_ts"] = time.time()
         self.context.runtime["live_to_full_scale"] = {
             "x": scale_x,
             "y": scale_y,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
@@ -57,10 +58,12 @@ class CameraControlService:
             }
 
         settings = {}
+        backend = self._backend_name(camera)
         for spec in self.PROPERTY_SPECS:
             prop_id = getattr(cv2, spec.cv2_prop, None)
             auto_prop_id = getattr(cv2, spec.auto_prop, None) if spec.auto_prop else None
             supported, value = self._read_property(camera, prop_id)
+            min_value, max_value = self._effective_range(spec, value, backend)
 
             auto_supported = False
             auto_value = None
@@ -70,8 +73,8 @@ class CameraControlService:
 
             settings[spec.key] = {
                 "value": value,
-                "min": spec.default_min,
-                "max": spec.default_max,
+                "min": min_value,
+                "max": max_value,
                 "step": spec.default_step,
                 "supported": supported,
                 "auto": auto_value if auto_supported else False,
@@ -136,17 +139,29 @@ class CameraControlService:
                 rejected[key] = "invalid_value"
                 continue
 
-            clamped = min(spec.default_max, max(spec.default_min, numeric))
+            supported, current_value = self._read_property(camera, prop_id)
+            backend = self._backend_name(camera)
+            min_value, max_value = self._effective_range(spec, current_value if supported else numeric, backend)
+            clamped = min(max_value, max(min_value, numeric))
             ok = self._set_property(camera, prop_id, clamped)
             applied[key] = bool(ok)
             if not ok:
                 rejected[key] = "set_failed"
 
         status = "OK" if not rejected else "PARTIAL"
+        refreshed = self.get_capabilities()
+        applied_readback = {}
+        refreshed_settings = refreshed.get("settings", {})
+        for key in applied.keys():
+            if key in refreshed_settings:
+                applied_readback[key] = refreshed_settings[key].get("value")
+
         return {
             "status": status,
             "applied": applied,
+            "applied_values": applied_readback,
             "rejected": rejected,
+            "settings": refreshed_settings,
             "last_error": self.last_error,
         }
 
@@ -234,6 +249,34 @@ class CameraControlService:
                 "auto_supported": False,
             }
         return payload
+
+    def _effective_range(self, spec: CameraPropertySpec, current_value: Any, backend: str) -> Tuple[float, float]:
+        min_value = float(spec.default_min)
+        max_value = float(spec.default_max)
+
+        numeric_value = None
+        try:
+            if current_value is not None:
+                numeric_value = float(current_value)
+        except Exception:
+            numeric_value = None
+
+        if numeric_value is not None and math.isfinite(numeric_value):
+            if numeric_value < min_value:
+                min_value = numeric_value
+            if numeric_value > max_value:
+                max_value = numeric_value
+
+        # Logitech/V4L2 exposure often reports absolute units (>0) instead of log2 negatives.
+        if spec.key == "exposure" and backend == "v4l2":
+            if numeric_value is not None and numeric_value > 0:
+                min_value = 1.0
+                max_value = max(max_value, 4095.0)
+
+        if min_value > max_value:
+            min_value, max_value = max_value, min_value
+
+        return min_value, max_value
 
     def _backend_name(self, camera) -> str:
         capture = getattr(camera, "capture", None)

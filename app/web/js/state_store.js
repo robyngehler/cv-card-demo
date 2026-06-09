@@ -5,65 +5,22 @@ export function createStateStore() {
 
   const state = {
     ui: {
-      activeTab: "questionnaire",
-      debugFps: 5,
+      diagnosticsOpen: false,
+      mode: "RUN",
     },
     connection: {
-      scoreWs: "CONNECTING",
-      lastScoreAt: null,
+      events: "CONNECTING",
+      lastEventAt: null,
       backendReachable: false,
       reconnectAttempt: 0,
     },
-    app: {
-      name: "cv-card-demo",
-      version: "0.1.0",
-      state: "BOOT",
-      substate: null,
-    },
-    session: {
-      session_id: null,
-      candidate_id: null,
-      identity_status: "UNKNOWN",
-      current_question_id: null,
-      phase: "WAIT_FOR_MOVEMENT",
-      completed: false,
-      question_index: 0,
-    },
-    score: {
-      visible: false,
-      score: null,
-      rating: null,
-      source: "idle",
-      fusion_state: "NO_TARGET",
-      question_label: "Place a business card to begin",
-      question_min_label: "0",
-      question_max_label: "10",
-      countdown_remaining_s: null,
-      message: "System starting...",
-      confidence: 0,
-      candidates_count: 0,
-      question_phase: "WAIT_FOR_MOVEMENT",
-    },
-    health: {
-      status: "UNKNOWN",
-      services: {},
-    },
-    runtime: {
-      card: {},
-      hand: {},
-      tracking: {},
-    },
+    lastSnapshotTimestamp: 0,
+    snapshot: null,
     camera: {
       settings: {},
       capabilities: {},
       last_error: null,
       lastApplyResult: null,
-    },
-    debugFrame: {
-      src: "",
-      ageLabel: "no frame",
-      available: false,
-      lastLoadedAt: null,
     },
     timeline: [],
   };
@@ -125,6 +82,18 @@ export function createStateStore() {
     state,
     patch,
     merge,
+    setSnapshot(snapshot) {
+      const timestamp = Number(snapshot?.timestamp || 0);
+      if (!Number.isFinite(timestamp) || timestamp <= state.lastSnapshotTimestamp) {
+        return false;
+      }
+      state.snapshot = snapshot;
+      state.lastSnapshotTimestamp = timestamp;
+      state.ui.mode = snapshot?.app?.mode || state.ui.mode || "RUN";
+      state.connection.lastEventAt = new Date().toISOString();
+      notify();
+      return true;
+    },
     subscribe,
     pushEvent,
   };

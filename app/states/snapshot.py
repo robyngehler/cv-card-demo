@@ -11,6 +11,14 @@ class SnapshotState:
             self.context.logger.info("Entering SNAPSHOT state")
 
     def run(self):
+        if self.context.runtime.get("ui_mode") == "CONFIGURE_CAMERA":
+            self.context.runtime["substate"] = "CAMERA_CONFIG_PAUSED"
+            return "IDLE_NO_CARD"
+
+        forced_state = self.context.runtime.pop("force_state", None)
+        if forced_state:
+            return forced_state
+
         questionnaire = self.context.get_service("questionnaire", default=None)
         snapshot_service = self.context.get_service("snapshot", default=None)
         persistence = self.context.get_service("persistence", default=None)
