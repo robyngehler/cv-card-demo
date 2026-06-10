@@ -149,33 +149,14 @@ class CameraControlService:
             min_value, max_value = self._effective_range(spec, current_value if supported else numeric, backend)
             clamped = min(max_value, max(min_value, numeric))
 
-            if spec.supports_auto and spec.auto_prop:
-                auto_prop_id = getattr(cv2, spec.auto_prop, None)
-                auto_supported, auto_value = self._read_property(camera, auto_prop_id)
-                if auto_supported and self._normalize_auto_value(spec.key, auto_value):
-                    auto_disable_ok = self._set_property(
-                        camera,
-                        auto_prop_id,
-                        self._encode_auto_value(spec.key, False, backend=backend),
-                    )
-                    if auto_disable_ok:
-                        applied[f"auto_{spec.key}"] = True
-                    else:
-                        rejected[f"auto_{spec.key}"] = "set_failed"
-
             ok = self._set_property(camera, prop_id, clamped)
             if not ok:
                 applied[key] = False
                 rejected[key] = "set_failed"
                 continue
-
-            read_ok, read_value = self._read_property(camera, prop_id)
-            if read_ok:
-                tolerance = max(0.25, abs(float(spec.default_step)) * 2.0)
-                if abs(float(read_value) - float(clamped)) > tolerance:
-                    applied[key] = False
-                    rejected[key] = "readback_mismatch"
-                    continue
+            # Trust capture.set() returning True — V4L2 and other drivers often
+            # quantise values silently, so a readback tolerance check causes
+            # false readback_mismatch failures and makes the UI slider jump back.
             applied[key] = True
 
         status = "OK" if not rejected else "PARTIAL"
@@ -183,7 +164,10 @@ class CameraControlService:
         applied_readback = {}
         refreshed_settings = refreshed.get("settings", {})
         for key in applied.keys():
-            if key in refreshed_settings:
+            # Only include keys that were actually applied successfully.
+            # Including failed keys would cause the frontend to overwrite its
+            # draft value with the camera's current value, making sliders jump back.
+            if applied.get(key) and key in refreshed_settings:
                 applied_readback[key] = refreshed_settings[key].get("value")
 
         return {

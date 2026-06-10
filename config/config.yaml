@@ -59,6 +59,7 @@ detector:
     model_path: "./models/yolov8n.pt"
     confidence: 0.25
     fallback_to_classical: true
+    device: "auto"   # auto -> cuda:0 when available, else cpu (or set "cpu"/"cuda:0")
 
   preprocessing:
     grayscale: true
@@ -100,6 +101,14 @@ tracking:
   hand:
     enabled: true
     model: "mediapipe_hands"
+    # Run MediaPipe in a background thread and keep each call cheap so the
+    # tracking loop and live stream stay responsive when a hand appears.
+    # MediaPipe's process() holds the GIL, so model_complexity + process_max_dim
+    # + detect_hz matter more than the thread itself.
+    async: true
+    detect_hz: 6.0          # max hand-detection rate (snapshot guard only)
+    model_complexity: 0     # 0 = lite landmark model (much faster on CPU)
+    process_max_dim: 256    # downscale the hand ROI before process()
     min_detection_confidence: 0.5
     min_tracking_confidence: 0.5
     max_proxy_velocity_norm_per_s: 2.0
@@ -125,7 +134,10 @@ tracking:
       validate_timeout_s: 0.25
 
     lost_hold:
-      max_duration_s: 0.5
+      # Hold the last confirmed score through brief card occlusion (e.g. a
+      # hand reaching over the card) so tracking does not bounce back to
+      # IDLE_NO_CARD and reset the questionnaire session.
+      max_duration_s: 1.5
 
     smoothing:
       score_ema_alpha: 0.35

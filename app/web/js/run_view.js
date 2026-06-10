@@ -1,140 +1,230 @@
+const STAR_SVG = '<svg viewBox="0 0 100 100"><path d="M50 6 L62 38 L96 38 L68 58 L79 92 L50 72 L21 92 L32 58 L4 38 L38 38 Z"/></svg>';
+const RING_LEN = 194.78;
+const TOTAL_COUNTDOWN_S = 3;
+
 function clampScore(value) {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Math.max(0, Math.min(1, value));
 }
 
-function phaseLabel(phase) {
-  if (!phase) {
-    return "WAIT_FOR_MOVEMENT";
-  }
-  return String(phase);
+function scoreToStar(score) {
+  if (score === null) return null;
+  return Math.max(1, Math.min(5, Math.ceil(score * 5)));
 }
 
-function toFiniteInteger(value) {
-  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : null;
+function buildSections() {
+  const container = document.getElementById("run-sections");
+  if (!container) return;
+  container.innerHTML = "";
+  for (let s = 1; s <= 5; s++) {
+    const div = document.createElement("div");
+    div.className = "run-section";
+    div.dataset.star = String(s);
+    let starsHtml = "";
+    for (let i = 0; i < s; i++) starsHtml += STAR_SVG;
+    div.innerHTML =
+      `<div class="run-section-ring"></div>` +
+      `<div class="run-section-num">${s}</div>` +
+      `<div class="run-section-stars">${starsHtml}</div>`;
+    container.appendChild(div);
+  }
 }
+
+function buildStars() {
+  const container = document.getElementById("run-stars");
+  if (!container) return;
+  container.innerHTML = "";
+  for (let i = 0; i < 5; i++) {
+    const div = document.createElement("div");
+    div.className = "run-star";
+    div.innerHTML = STAR_SVG;
+    container.appendChild(div);
+  }
+}
+
+function buildQProgress(count) {
+  const container = document.getElementById("run-q-progress");
+  if (!container) return;
+  container.innerHTML = "";
+  for (let i = 0; i < count; i++) {
+    const div = document.createElement("div");
+    div.className = "run-q-dot";
+    container.appendChild(div);
+  }
+}
+
+const PANELS = {
+  idle: "run-pv-idle",
+  greet: "run-pv-greet",
+  question: "run-pv-question",
+  thanks: "run-pv-thanks",
+};
+
+const BOOT_STATES = new Set(["BOOT", "INIT_CAM", "CALIBRATION", "RECOVERY", "ERROR_SAFE"]);
+const IDLE_STATES = new Set(["IDLE_NO_CARD", "CANDIDATE_DETECTED"]);
+const TRACKING_STATES = new Set(["TRACKING", "SNAPSHOT"]);
 
 export function initRunView(store) {
-  const questionLabel = document.getElementById("run-question-label");
-  const message = document.getElementById("run-message");
-  const sessionId = document.getElementById("run-session-id");
-  const questionProgress = document.getElementById("run-question-progress");
-  const countdownInline = document.getElementById("run-countdown-inline");
-  const progressFill = document.getElementById("run-progress-fill");
-  const progressLabel = document.getElementById("run-progress-label");
-  const meterFill = document.getElementById("run-meter-fill");
-  const scoreValue = document.getElementById("run-score-value");
-  const minLabel = document.getElementById("run-min-label");
-  const maxLabel = document.getElementById("run-max-label");
-  const phasePill = document.getElementById("pill-phase");
-  const sourcePill = document.getElementById("pill-source");
-  const fusionPill = document.getElementById("pill-fusion");
-  const confidencePill = document.getElementById("pill-confidence");
-  const countdownOverlay = document.getElementById("run-countdown-overlay");
-  const countdownValue = document.getElementById("run-countdown-value");
-  const countdownTitle = document.getElementById("run-countdown-title");
+  buildSections();
+  buildStars();
+
+  const sectionEls = document.querySelectorAll(".run-section");
+  let lastQCount = 0;
 
   store.subscribe((state) => {
-    const snap = state.snapshot;
-    const q = snap?.questionnaire || {};
-    const t = snap?.tracking || {};
+    const snap = state.snapshot || {};
+    const q = snap.questionnaire || {};
+    const session = snap.session || {};
     const live = state.live?.score || {};
+    const appState = snap.app?.state || snap.state || "";
 
-    const score = clampScore(live.score ?? q.score ?? t.score);
-    const rating = typeof live.rating === "number" && Number.isFinite(live.rating)
-      ? live.rating
-      : (typeof q.rating === "number" && Number.isFinite(q.rating)
-        ? q.rating
-        : (typeof t.rating === "number" && Number.isFinite(t.rating) ? t.rating : null));
-    const questionIndex = toFiniteInteger(live.question_index ?? q.question_index ?? 0) ?? 0;
-    const questionCount = toFiniteInteger(q.question_count ?? 0) ?? 0;
-    const questionProgressLabel = questionCount > 0 ? `${Math.min(questionIndex + 1, questionCount)}/${questionCount}` : "--";
-    const progressPercent = questionCount > 0 ? Math.min(100, (Math.min(questionIndex + 1, questionCount) / questionCount) * 100) : 0;
-    const countdownRemaining = typeof live.countdown_remaining_s === "number" && Number.isFinite(live.countdown_remaining_s)
-      ? live.countdown_remaining_s
-      : (typeof q.countdown_remaining_s === "number" && Number.isFinite(q.countdown_remaining_s)
-        ? q.countdown_remaining_s
-        : null);
+    const score = clampScore(live.score ?? q.score ?? snap.tracking?.score);
+    const star = scoreToStar(score);
     const phase = live.question_phase || q.phase || "WAIT_FOR_MOVEMENT";
-    const questionText = live.question_label || q.question_label || "Place a business card to begin";
-    const messageText = live.message || q.message || "System ready";
+    // question_index / question_count live on the session payload, with the
+    // live score stream as a faster-updating fallback.
+    const questionIndex =
+      typeof live.question_index === "number"
+        ? live.question_index
+        : typeof session.question_index === "number"
+        ? session.question_index
+        : typeof q.question_index === "number"
+        ? q.question_index
+        : 0;
+    const questionCount =
+      typeof session.question_count === "number"
+        ? session.question_count
+        : typeof q.question_count === "number"
+        ? q.question_count
+        : 0;
+    const countdownRemaining =
+      typeof live.countdown_remaining_s === "number"
+        ? live.countdown_remaining_s
+        : typeof q.countdown_remaining_s === "number"
+        ? q.countdown_remaining_s
+        : null;
+    const questionText = live.question_label || q.question_label || "";
+    const sessionName = q.session_name || q.name || q.identity?.name || "";
+    const sessionMail = q.session_mail || q.email || q.identity?.email || "";
 
-    if (questionLabel) {
-      questionLabel.textContent = questionText;
-    }
-    if (message) {
-      message.textContent = messageText;
-    }
-    if (sessionId) {
-      sessionId.textContent = live.session_id || q.session_id || t.session_id || "--";
-    }
-    if (questionProgress) {
-      questionProgress.textContent = questionProgressLabel;
-    }
-    if (progressLabel) {
-      progressLabel.textContent = `${Math.round(progressPercent)}%`;
-    }
-    if (progressFill) {
-      progressFill.style.width = `${progressPercent}%`;
-    }
-    if (minLabel) {
-      minLabel.textContent = live.question_min_label || q.min_label || "0";
-    }
-    if (maxLabel) {
-      maxLabel.textContent = live.question_max_label || q.max_label || "10";
-    }
-    if (meterFill) {
-      meterFill.style.width = `${Math.round((score || 0) * 100)}%`;
-      meterFill.style.opacity = score === null ? "0.25" : "1";
-    }
-    if (scoreValue) {
-      scoreValue.textContent = rating === null ? "--" : rating.toFixed(1);
-    }
+    // Determine which left panel to show.
+    //
+    // Drive this from the questionnaire SESSION, not the raw app state: card
+    // detection can briefly bounce TRACKING -> IDLE -> TRACKING, but the
+    // session (created once a card is confirmed) persists across those blips,
+    // so the question panel stays put instead of flickering back to "Karte
+    // auflegen".
+    const isBooting = !appState || BOOT_STATES.has(appState);
+    const isTracking = TRACKING_STATES.has(appState);
+    const sessionId = session.session_id || q.session_id || live.session_id || null;
+    const completed =
+      session.completed === true ||
+      phase === "DONE" ||
+      phase === "THANKS" ||
+      phase === "COMPLETE";
+    const hasActiveSession = Boolean(sessionId) && !completed;
 
-    if (phasePill) {
-      phasePill.textContent = phaseLabel(phase);
-    }
-    if (sourcePill) {
-      sourcePill.textContent = live.source || t.source || "idle";
-    }
-    if (fusionPill) {
-      fusionPill.textContent = live.fusion_state || t.fusion_state || "NO_TARGET";
-    }
-    if (confidencePill) {
-      const conf = typeof live.confidence === "number" && Number.isFinite(live.confidence)
-        ? live.confidence
-        : (typeof t.confidence === "number" && Number.isFinite(t.confidence) ? t.confidence : null);
-      confidencePill.textContent = conf === null ? "--" : conf.toFixed(2);
-    }
-
-    const showCountdown = phase === "COUNTDOWN" || phase === "SNAPSHOT_PENDING";
-    if (countdownOverlay) {
-      countdownOverlay.classList.toggle("hidden", !showCountdown);
-    }
-
-    if (countdownTitle) {
-      countdownTitle.textContent = phase === "SNAPSHOT_PENDING" ? "Capturing" : "Hold still";
-    }
-
-    if (countdownValue) {
-      if (phase === "COUNTDOWN" && typeof countdownRemaining === "number") {
-        countdownValue.textContent = String(Math.max(0, Math.ceil(countdownRemaining)));
-      } else if (phase === "SNAPSHOT_PENDING") {
-        countdownValue.textContent = "OK";
-      } else {
-        countdownValue.textContent = "--";
+    let activePanel = "idle";
+    if (!isBooting) {
+      if (completed) {
+        activePanel = "thanks";
+      } else if (phase === "GREETING") {
+        activePanel = "greet";
+      } else if (hasActiveSession || isTracking) {
+        activePanel = "question";
       }
     }
 
-    if (countdownInline) {
-      if (phase === "COUNTDOWN" && typeof countdownRemaining === "number") {
-        countdownInline.textContent = `${Math.max(0, Math.ceil(countdownRemaining))} s`;
-      } else if (phase === "SNAPSHOT_PENDING") {
-        countdownInline.textContent = "capturing";
-      } else {
-        countdownInline.textContent = "--";
+    // Show / hide left panels
+    for (const [key, id] of Object.entries(PANELS)) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = key === activePanel ? "" : "none";
+    }
+
+    // Section highlighting
+    sectionEls.forEach((el) => {
+      el.classList.toggle("active", star !== null && +el.dataset.star === star);
+    });
+
+    // Stars in question panel
+    document.querySelectorAll(".run-star").forEach((el, i) => {
+      el.classList.toggle("on", star !== null && i < star);
+    });
+
+    const ratingVal = document.getElementById("run-rating-val");
+    if (ratingVal) ratingVal.textContent = star !== null ? String(star) : "—";
+
+    // Question text & counter — map English backend defaults to German
+    const displayText =
+      !questionText || questionText === "Place a business card to begin"
+        ? "Karte über die fünf Felder bewegen – die Position bestimmt die Sterne."
+        : questionText;
+    const qText = document.getElementById("run-q-text");
+    if (qText) qText.textContent = displayText;
+
+    const qCounter = document.getElementById("run-q-counter");
+    if (qCounter && questionCount > 0) {
+      qCounter.textContent = `Frage ${questionIndex + 1} von ${questionCount}`;
+    }
+
+    // Q-progress dots
+    if (questionCount !== lastQCount) {
+      buildQProgress(questionCount);
+      lastQCount = questionCount;
+    }
+    document.querySelectorAll(".run-q-dot").forEach((dot, i) => {
+      dot.className =
+        "run-q-dot" +
+        (i < questionIndex ? " done" : i === questionIndex ? " active" : "");
+    });
+
+    // Greet / thanks names
+    const greetName = document.getElementById("run-greet-name");
+    if (greetName) greetName.textContent = sessionName || "—";
+
+    const greetMail = document.getElementById("run-greet-mail");
+    if (greetMail) greetMail.textContent = sessionMail ? `Erkannt: ${sessionMail}` : "";
+
+    const thanksName = document.getElementById("run-thanks-name");
+    if (thanksName) thanksName.textContent = sessionName || "—";
+
+    // Timer ring
+    const timer = document.getElementById("run-timer");
+    const ringFg = document.getElementById("run-ring-fg");
+    const ringNum = document.getElementById("run-ring-num");
+    const showTimer = phase === "COUNTDOWN" && countdownRemaining !== null;
+    if (timer) timer.classList.toggle("show", showTimer);
+
+    if (showTimer && ringFg && ringNum) {
+      const remaining = Math.max(0, countdownRemaining);
+      const offset = Math.min(RING_LEN, RING_LEN * (1 - remaining / TOTAL_COUNTDOWN_S)).toFixed(1);
+      ringFg.style.strokeDashoffset = offset;
+      ringNum.textContent = String(Math.ceil(remaining) || 0);
+    }
+
+    // Saved flash
+    const savedFlash = document.getElementById("run-saved-flash");
+    if (savedFlash) {
+      savedFlash.classList.toggle(
+        "show",
+        phase === "SAVED" || phase === "SNAPSHOT_PENDING" || phase === "SNAPSHOT"
+      );
+    }
+
+    // Hint text
+    const hint = document.getElementById("run-hint");
+    if (hint) {
+      if (activePanel === "idle") {
+        hint.textContent = isBooting ? "System startet …" : "Bereit – Visitenkarte auflegen.";
+      } else if (activePanel === "greet") {
+        hint.textContent = sessionName ? `Erkannt: ${sessionName}` : "Karte erkannt.";
+      } else if (activePanel === "question") {
+        hint.textContent =
+          phase === "COUNTDOWN"
+            ? "Karte ruhig halten …"
+            : "Karte auf dem Tisch bewegen – die Spalte bestimmt die Sterne.";
+      } else if (activePanel === "thanks") {
+        hint.textContent = "Danke fürs Mitmachen!";
       }
     }
   });

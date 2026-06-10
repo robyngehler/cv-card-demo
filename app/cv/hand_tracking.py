@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 import importlib
 from typing import Any, Dict, Optional, Tuple
 
+import numpy as np
+
 
 HAND_LANDMARK_NAMES = {
     0: "wrist",
@@ -96,9 +98,24 @@ class HandProxyEstimator:
 class MediaPipeHandDetector:
     detector_name = "mediapipe_hands"
 
-    def __init__(self, *, min_detection_confidence: float, min_tracking_confidence: float):
+    def __init__(
+        self,
+        *,
+        min_detection_confidence: float,
+        min_tracking_confidence: float,
+        model_complexity: int = 0,
+        process_max_dim: int = 256,
+    ):
         self.min_detection_confidence = float(min_detection_confidence)
         self.min_tracking_confidence = float(min_tracking_confidence)
+        # model_complexity 0 = "lite" landmark model (several times faster on
+        # CPU than the default full model). Hand tracking only guards snapshots,
+        # so the lite model is more than accurate enough.
+        self.model_complexity = int(model_complexity)
+        # MediaPipe's process() holds the GIL, so a large input stalls the whole
+        # process. Downscaling the ROI before process() is the most effective
+        # lever for keeping the loop responsive when a hand is present.
+        self.process_max_dim = int(process_max_dim)
         self._backend = None
         self._hands = None
         self._status: Dict[str, Any] = {
@@ -123,8 +140,25 @@ class MediaPipeHandDetector:
                 debug={"status": self._status.get("status")},
             )
 
+        # Downscale a copy for MediaPipe; landmarks come back normalised, so we
+        # still scale them against the original ROI dimensions below.
+        rgb = hand_frame[:, :, ::-1]
+        max_dim = max(int(hand_frame.shape[0]), int(hand_frame.shape[1]))
+        if self.process_max_dim > 0 and max_dim > self.process_max_dim:
+            scale = self.process_max_dim / float(max_dim)
+            try:
+                import cv2 as _cv2
+                rgb = _cv2.resize(
+                    rgb,
+                    (max(1, int(hand_frame.shape[1] * scale)), max(1, int(hand_frame.shape[0] * scale))),
+                    interpolation=_cv2.INTER_AREA,
+                )
+            except Exception:
+                rgb = hand_frame[:, :, ::-1]
+        rgb = np.ascontiguousarray(rgb)
+
         try:
-            results = self._hands.process(hand_frame[:, :, ::-1])
+            results = self._hands.process(rgb)
         except Exception as exc:
             self._status["status"] = "ERROR"
             self._status["last_error"] = str(exc)
@@ -195,6 +229,11 @@ class MediaPipeHandDetector:
         return dict(self._status)
 
     def _load_backend(self) -> None:
+        import os
+        # Suppress TFLite / glog stderr spam that floods the terminal when hands appear.
+        os.environ.setdefault("GLOG_minloglevel", "2")
+        os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+        os.environ.setdefault("MEDIAPIPE_DISABLE_GPU", "1")
         try:
             mp = importlib.import_module("mediapipe")
         except Exception as exc:
@@ -209,12 +248,15 @@ class MediaPipeHandDetector:
         self._hands = mp.solutions.hands.Hands(
             static_image_mode=False,
             max_num_hands=1,
+            model_complexity=self.model_complexity,
             min_detection_confidence=self.min_detection_confidence,
             min_tracking_confidence=self.min_tracking_confidence,
         )
         self._status = {
             "status": "READY",
             "backend": self.detector_name,
+            "model_complexity": self.model_complexity,
+            "process_max_dim": self.process_max_dim,
         }
 
     @staticmethod

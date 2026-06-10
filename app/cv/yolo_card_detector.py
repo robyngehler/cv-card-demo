@@ -21,6 +21,7 @@ class YoloCardDetector:
             context.config.get("detector", {}).get("business_card_label")
             or "business_card"
         )
+        self.device = "cpu"
         self._load_model()
 
     def detect(self, workspace_frame) -> CardDetectionResult:
@@ -38,7 +39,9 @@ class YoloCardDetector:
         )
 
         try:
-            results = self.model.predict(source=workspace_frame, verbose=False, conf=conf_threshold)
+            results = self.model.predict(
+                source=workspace_frame, verbose=False, conf=conf_threshold, device=self.device
+            )
         except Exception as exc:
             return CardDetectionResult(
                 visible=False,
@@ -151,15 +154,43 @@ class YoloCardDetector:
 
         try:
             self.model = yolo_class(model_path)
+            self.device = self._select_device(yolo_config)
+            if self.device != "cpu":
+                try:
+                    self.model.to(self.device)
+                except Exception:
+                    # Keep the model usable on CPU if the move fails.
+                    self.device = "cpu"
             self.available = True
             self.status = {
                 "status": "READY",
                 "detector": self.detector_name,
                 "model_path": model_path,
+                "device": self.device,
             }
+            if self.context.logger is not None:
+                self.context.logger.info(
+                    f"YOLO detector ready model={model_path} device={self.device}"
+                )
         except Exception as exc:
             self.status = {
                 "status": "ERROR",
                 "detector": self.detector_name,
                 "last_error": str(exc),
             }
+
+    def _select_device(self, yolo_config: Dict[str, Any]) -> str:
+        configured = str(yolo_config.get("device", "auto")).strip().lower()
+        if configured not in ("", "auto"):
+            return configured
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                return "cuda:0"
+        except Exception as exc:
+            if self.context.logger is not None:
+                self.context.logger.warning(
+                    f"YOLO detector: CUDA unavailable, using CPU (reason={exc})"
+                )
+        return "cpu"

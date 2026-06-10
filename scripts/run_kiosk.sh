@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-URL="http://localhost:8000"
+URL="${CV_CARD_DEMO_URL:-http://localhost:8000}"
 
-for i in {1..20}; do
+# Wait for the backend to answer health before opening the browser.
+for _ in {1..40}; do
   if curl -fsS "$URL/api/health" >/dev/null 2>&1; then
     break
   fi
@@ -17,7 +18,7 @@ elif command -v chromium >/dev/null 2>&1; then
 elif command -v google-chrome >/dev/null 2>&1; then
   BROWSER="google-chrome"
 else
-  echo "ERROR: No supported browser found."
+  echo "ERROR: No supported browser found (chromium-browser/chromium/google-chrome)." >&2
   exit 1
 fi
 

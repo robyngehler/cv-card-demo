@@ -11,6 +11,9 @@ class IdleNoCardState:
         self.poll_interval = float(
             self.context.config.get("camera", {}).get("idle_poll_interval", 0.5)
         )
+        self.live_jpeg_quality = int(
+            (context.config.get("server", {}) or {}).get("live_stream_jpeg_quality", 70)
+        )
 
     def enter(self):
         self.context.runtime["current_state"] = self.name
@@ -43,13 +46,27 @@ class IdleNoCardState:
             try:
                 full_frame = camera_service.read_frame(timeout_s=0.5)
                 frame, scale_x, scale_y = make_live_frame(full_frame, self.context.config)
+                ts = time.time()
                 self.context.runtime["last_frame"] = full_frame
                 self.context.runtime["last_live_frame"] = frame
-                self.context.runtime["last_live_frame_ts"] = time.time()
+                self.context.runtime["last_live_frame_ts"] = ts
                 self.context.runtime["live_to_full_scale"] = {
                     "x": scale_x,
                     "y": scale_y,
                 }
+                # Encode a clean stream frame so the live view stays fresh in
+                # IDLE / CONFIGURE_CAMERA, not just during TRACKING.
+                try:
+                    import cv2 as _cv2
+                    _ok, _enc = _cv2.imencode(
+                        ".jpg", frame,
+                        [int(_cv2.IMWRITE_JPEG_QUALITY), self.live_jpeg_quality],
+                    )
+                    if _ok:
+                        self.context.runtime["last_live_frame_jpeg"] = _enc.tobytes()
+                        self.context.runtime["last_live_frame_jpeg_ts"] = ts
+                except Exception:
+                    pass
 
                 if configure_mode:
                     self.context.runtime["substate"] = "CAMERA_CONFIG_PREVIEW"

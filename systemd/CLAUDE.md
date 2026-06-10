@@ -11,14 +11,22 @@ crashes. Use systemd for process supervision.
 
 ```text
 cv-card-demo.target
-cv-card-demo-backend.service
-cv-card-demo-kiosk.service
+cv-card-demo-backend.service.in   (template)
+cv-card-demo-kiosk.service.in     (template)
 ```
+
+The `.service.in` files are **templates** with `@ROOT@`, `@USER@`, `@GROUP@`,
+`@DISPLAY@`, `@XAUTHORITY@` placeholders. `scripts/install_services.sh` renders
+them for the current checkout (path + user auto-detected, env-overridable) and
+installs the rendered `.service` files into `/etc/systemd/system`. This keeps
+the demo runnable in place (e.g. `~/workspace/cv-card-demo`) as well as from
+`/opt/cv-card-demo` — no hard-coded paths or user.
 
 ## Backend Service
 
-- run from `/opt/cv-card-demo`
+- run from the repo root (`@ROOT@`, resolved by `run_backend.sh` itself)
 - activate the virtual environment
+- export `LD_LIBRARY_PATH` for the bundled NVIDIA CUDA libs (so YOLO uses GPU)
 - pass the config path
 - use `Restart=always`
 - log to the journal

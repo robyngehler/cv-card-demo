@@ -7,14 +7,14 @@ StartLimitBurst=10
 
 [Service]
 Type=simple
-User=demo
-Group=demo
-WorkingDirectory=/opt/cv-card-demo
+User=@USER@
+Group=@GROUP@
+WorkingDirectory=@ROOT@
 
 Environment=PYTHONUNBUFFERED=1
-Environment=CV_CARD_DEMO_CONFIG=/opt/cv-card-demo/config/config.yaml
+Environment=CV_CARD_DEMO_CONFIG=@ROOT@/config/config.yaml
 
-ExecStart=/opt/cv-card-demo/scripts/run_backend.sh
+ExecStart=@ROOT@/scripts/run_backend.sh
 
 Restart=always
 RestartSec=2

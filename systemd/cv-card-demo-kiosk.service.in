@@ -5,13 +5,13 @@ Wants=cv-card-demo-backend.service
 
 [Service]
 Type=simple
-User=demo
-Group=demo
+User=@USER@
+Group=@GROUP@
 
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/demo/.Xauthority
+Environment=DISPLAY=@DISPLAY@
+Environment=XAUTHORITY=@XAUTHORITY@
 
-ExecStart=/opt/cv-card-demo/scripts/run_kiosk.sh
+ExecStart=@ROOT@/scripts/run_kiosk.sh
 
 Restart=always
 RestartSec=3

@@ -5,11 +5,19 @@
 ## Shell Scripts
 
 ```text
-run_backend.sh      — activate venv, exec python -m app.main
+run_backend.sh      — resolve repo root from script path, activate venv, export
+                      CUDA LD_LIBRARY_PATH, exec python -m app.main
 run_kiosk.sh        — launch browser in kiosk/fullscreen at localhost:8000
-install_services.sh — copy systemd units, reload daemon, enable + start services
-preflight.sh        — sanity checks before deployment (venv, config, model file)
+install_services.sh — render systemd unit templates for this checkout
+                      (path/user/display auto-detected), install + enable
+preflight.sh        — sanity checks before deployment (venv, config, CUDA, camera)
 ```
+
+All scripts are location-independent: they derive the repo root from their own
+path (`$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)`), so no script hard-codes
+`/opt/cv-card-demo`. Env overrides: `CV_CARD_DEMO_CONFIG`, `CV_CARD_DEMO_VENV`,
+`CV_CARD_DEMO_URL`; for install: `CVD_USER`, `CVD_GROUP`, `CVD_DISPLAY`,
+`CVD_XAUTHORITY`.
 
 Every shell script starts with:
 

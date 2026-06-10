@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import threading
 import time
 from typing import Any, Dict, Optional, Tuple
 
@@ -23,12 +24,73 @@ class MediaPipeHandTracker:
         self.detector = MediaPipeHandDetector(
             min_detection_confidence=self.min_detection_confidence,
             min_tracking_confidence=self.min_tracking_confidence,
+            model_complexity=int(hand_config.get("model_complexity", 0)),
+            process_max_dim=int(hand_config.get("process_max_dim", 256)),
         )
         self._last_proxy_norm: Optional[Tuple[float, float]] = None
         self._last_proxy_timestamp: Optional[float] = None
 
+        # Run MediaPipe in a background thread and cap its rate. Hand detection
+        # only guards snapshots, so a few Hz is plenty. MediaPipe's process()
+        # holds the GIL, so the lite model + downscaled ROI + this throttle are
+        # what actually keep the main tracking loop responsive when a hand
+        # appears; the thread just decouples scheduling.
+        self._async_enabled = bool(hand_config.get("async", True))
+        self._min_interval_s = 1.0 / max(0.5, float(hand_config.get("detect_hz", 6.0)))
+        self._last_detect_at = 0.0
+        self._lock = threading.Lock()
+        self._pending: Optional[Tuple[Any, float]] = None
+        self._latest_measurement: HandMeasurement = self._empty_measurement(
+            time.monotonic(), reason="Hand detector warming up"
+        )
+        self._stop = False
+        self._worker: Optional[threading.Thread] = None
+        if self._async_enabled:
+            self._worker = threading.Thread(
+                target=self._worker_loop, name="hand-tracker", daemon=True
+            )
+            self._worker.start()
+
     def detect(self, frame, *, now: Optional[float] = None) -> HandMeasurement:
+        """Non-blocking when async is enabled.
+
+        Submits the latest frame to the background worker and immediately
+        returns the most recent completed measurement. Older pending frames
+        are dropped on purpose — only the freshest frame matters for guarding
+        snapshots.
+        """
         timestamp = time.monotonic() if now is None else now
+        if not self._async_enabled:
+            return self._detect_blocking(frame, timestamp)
+
+        with self._lock:
+            self._pending = (frame, timestamp)
+            return self._latest_measurement
+
+    def _worker_loop(self) -> None:
+        while not self._stop:
+            now = time.monotonic()
+            if (now - self._last_detect_at) < self._min_interval_s:
+                time.sleep(0.005)
+                continue
+            item: Optional[Tuple[Any, float]] = None
+            with self._lock:
+                if self._pending is not None:
+                    item = self._pending
+                    self._pending = None
+            if item is None:
+                time.sleep(0.005)
+                continue
+            self._last_detect_at = now
+            frame, timestamp = item
+            try:
+                measurement = self._detect_blocking(frame, timestamp)
+            except Exception as exc:  # pragma: no cover - defensive guard
+                measurement = self._empty_measurement(timestamp, reason=f"hand_worker_error: {exc}")
+            with self._lock:
+                self._latest_measurement = measurement
+
+    def _detect_blocking(self, frame, timestamp: float) -> HandMeasurement:
         workspace = self.context.get_service("workspace")
         hand_frame = workspace.transform(frame, workspace_name="hand")
         raw_measurement = self.detector.detect(hand_frame, timestamp=timestamp)
@@ -58,7 +120,6 @@ class MediaPipeHandTracker:
         card_point = workspace.translate_point(proxy_point, from_workspace="hand", to_workspace="card")
         normalized = workspace.normalize_point(card_point, workspace_name="card")
         validity_reason = self._validate_proxy(landmark_points, card_point, normalized, timestamp, workspace)
-        # confidence = raw_measurement.confidence # not used anymore
         valid = validity_reason is None
         if valid:
             self._last_proxy_norm = (normalized["x"], normalized["y"])
@@ -82,6 +143,20 @@ class MediaPipeHandTracker:
                 "card_point": {"x": card_point[0], "y": card_point[1]},
                 "normalized": normalized,
             },
+        )
+
+    @staticmethod
+    def _empty_measurement(timestamp: float, *, reason: str) -> HandMeasurement:
+        return HandMeasurement(
+            visible=False,
+            valid=False,
+            confidence=0.0,
+            proxy_x=None,
+            proxy_y=None,
+            proxy_x_normalized=None,
+            proxy_y_normalized=None,
+            reason=reason,
+            timestamp=timestamp,
         )
 
     def get_status(self) -> Dict[str, Any]:

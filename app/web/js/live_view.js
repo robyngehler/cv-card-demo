@@ -37,7 +37,7 @@ export function initLiveView(store) {
       clearInterval(timer);
       timer = null;
     }
-    const fps = currentMode === "CONFIGURE_CAMERA" ? 6 : 4;
+    const fps = currentMode === "CONFIGURE_CAMERA" ? 8 : 12;
     timer = setInterval(() => {
       refreshVisibleFrame().catch(() => {
         // Keep polling even if one fetch fails.

@@ -446,114 +446,37 @@ class UIService:
         runtime = self.context.runtime
         frame_ts = runtime.get("last_live_frame_ts") or time.time()
         mode_upper = str(mode or "run").upper()
+
+        # Two JPEG sources are produced by the state machine:
+        #   - last_live_frame_jpeg: clean camera frame — produced in every
+        #     state that reads frames (IDLE / CANDIDATE / TRACKING).
+        #   - last_debug_frame_jpeg: overlay frame (workspace boxes, card
+        #     contour, hand key-frames, debug text) — produced while TRACKING.
+        debug_bytes = runtime.get("last_debug_frame_jpeg")
+        debug_ts = runtime.get("last_debug_frame_jpeg_ts") or 0.0
+        live_bytes = runtime.get("last_live_frame_jpeg")
+        live_ts = runtime.get("last_live_frame_jpeg_ts") or 0.0
+
         if mode_upper == "RUN":
-            debug_bytes = runtime.get("last_debug_frame_jpeg")
+            # Visitor-facing view: always the clean camera frame. CV overlays
+            # (boxes / landmarks / debug text) belong in Configure / Diagnostics.
+            if live_bytes:
+                return live_bytes, frame_ts
             if debug_bytes:
                 return debug_bytes, frame_ts
-
-        frame = runtime.get("last_live_frame")
-        if frame is None:
-            frame = self._capture_live_frame_once()
-        if frame is None:
             return None, frame_ts
 
-        try:
-            import cv2
-        except Exception:
-            return None, frame_ts
+        # Configure / Diagnostics: prefer the overlay frame so the operator can
+        # verify card contour and hand key-frames; fall back to the freshest
+        # clean frame when no overlay has been produced yet (e.g. while idle).
+        if debug_bytes and debug_ts >= live_ts:
+            return debug_bytes, frame_ts
+        if live_bytes:
+            return live_bytes, frame_ts
+        if debug_bytes:
+            return debug_bytes, frame_ts
 
-        overlay = frame.copy()
-        if len(overlay.shape) == 2:
-            overlay = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGR)
-
-        workspace = self.context.get_service("workspace", default=None)
-        if workspace is not None:
-            for name, color in (("card", (82, 222, 151)), ("hand", (245, 171, 53))):
-                definition = workspace.workspaces.get(name)
-                if definition is None or definition.rect_px is None:
-                    continue
-                x, y, w, h = definition.rect_px
-                cv2.rectangle(overlay, (int(x), int(y)), (int(x + w), int(y + h)), color, 2)
-                cv2.putText(
-                    overlay,
-                    f"{name} workspace",
-                    (int(x), max(18, int(y) - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    color,
-                    1,
-                )
-
-        fusion = self.context.runtime.get("last_fusion_measurement")
-        cv2.putText(
-            overlay,
-            f"mode={self.context.runtime.get('ui_mode', 'RUN')} state={self.context.runtime.get('current_state')} source={getattr(fusion, 'source', 'idle')}",
-            (18, 28),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 255),
-            2,
-        )
-        cv2.putText(
-            overlay,
-            f"ts={frame_ts:.3f}",
-            (18, 52),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (255, 255, 255),
-            1,
-        )
-        success, encoded = cv2.imencode(
-            ".jpg",
-            overlay,
-            [int(cv2.IMWRITE_JPEG_QUALITY), int(self.context.config.get("server", {}).get("live_stream_jpeg_quality", 70))],
-        )
-        if not success:
-            return None, frame_ts
-        return encoded.tobytes(), frame_ts
-
-    def _capture_live_frame_once(self):
-        camera = self.context.get_service("camera", default=None)
-        runtime = self.context.runtime
-        frame = runtime.get("last_frame")
-        cached_live = runtime.get("last_live_frame")
-        last_live_ts = runtime.get("last_live_frame_ts")
-        min_interval = float(self.context.config.get("server", {}).get("live_capture_min_interval_s", 0.12))
-        min_interval = max(0.02, min_interval)
-
-        if cached_live is not None and last_live_ts is not None:
-            try:
-                if (time.time() - float(last_live_ts)) <= min_interval:
-                    return cached_live
-            except Exception:
-                pass
-
-        frame = None
-        read_from_camera = False
-        try:
-            if camera is not None and getattr(camera, "opened", False):
-                frame = camera.read_frame(timeout_s=0.08)
-                read_from_camera = frame is not None
-        except Exception:
-            frame = None
-
-        if frame is None:
-            frame = runtime.get("last_frame")
-            if frame is None:
-                frame = runtime.get("last_live_frame")
-        if frame is None:
-            return None
-
-        try:
-            live_frame, scale_x, scale_y = make_live_frame(frame, self.context.config)
-            if read_from_camera:
-                runtime["last_frame"] = frame
-            runtime["last_live_frame"] = live_frame
-            runtime["last_live_frame_ts"] = time.time()
-            runtime["live_to_full_scale"] = {"x": scale_x, "y": scale_y}
-            return live_frame
-        except Exception:
-            return None
+        return None, frame_ts
 
     async def _stream_live_mjpeg(self, mode="run"):
         fps = float(self.context.config.get("server", {}).get("live_stream_fps", 8.0))

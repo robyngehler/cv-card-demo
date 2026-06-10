@@ -1,9 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CV Card Demo</title>
+  <title>SKR · Visitenkarten-Scanner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -26,66 +29,81 @@
 
     <main class="main-shell">
       <section id="run-view" class="panel run-layout">
-        <article class="live-card">
-          <div class="panel-head">
-            <h2>Live Interaction</h2>
-            <span id="run-frame-age" class="age-pill">no frame</span>
-          </div>
-          <div class="live-wrap">
-            <img id="run-live-image" class="live-image" alt="Live run stream" />
-            <div id="run-countdown-overlay" class="countdown-overlay hidden">
-              <div id="run-countdown-value" class="countdown-value">--</div>
-              <p id="run-countdown-title">Hold still</p>
-            </div>
-          </div>
-        </article>
+        <div class="run-stage">
 
-        <article class="question-card">
-          <p class="section-label">Questionnaire</p>
-          <h3 id="run-question-label">Place a business card to begin</h3>
-          <p id="run-message" class="status-line">System starting...</p>
+          <!-- LINKS (1/3) — weißes Info-Panel -->
+          <div class="run-left">
+            <div class="run-brand">
+              <img src="https://www.smartekirobotik.de/logos/SKR_oSchrift_black.svg" alt="SKR"
+                   onerror="this.style.display='none';document.getElementById('run-brand-fb').style.display='inline'">
+              <span id="run-brand-fb" class="run-brand-fallback" style="display:none">SKR</span>
+              <span class="run-brand-tag">SKR</span>
+            </div>
+            <div class="run-panel-body">
 
-          <div class="session-meta">
-            <div class="meta-item">
-              <span>Session</span>
-              <strong id="run-session-id">--</strong>
-            </div>
-            <div class="meta-item">
-              <span>Question</span>
-              <strong id="run-question-progress">--</strong>
-            </div>
-            <div class="meta-item">
-              <span>Countdown</span>
-              <strong id="run-countdown-inline">--</strong>
+              <!-- IDLE -->
+              <div class="run-pv" id="run-pv-idle">
+                <div class="run-step-tag">Smarte KI-basierte Robotik</div>
+                <h2 class="run-hero">Lege deine Visitenkarte<br>auf den Tisch.</h2>
+                <p>Wir lesen deinen Namen aus und stellen dir kurze Fragen –<br>beantwortet durch die Position deiner Karte.</p>
+                <div class="run-pulse-card">Karte<br>auflegen</div>
+              </div>
+
+              <!-- GREETING -->
+              <div class="run-pv" id="run-pv-greet" style="display:none">
+                <div class="run-hi">Schön, dass du da bist</div>
+                <h2 class="run-hero">Hallo <span id="run-greet-name" class="run-accent">—</span></h2>
+                <p>Bewege deine Karte über die fünf Felder, um zu antworten –<br>1&nbsp;Stern links, 5&nbsp;Sterne rechts.</p>
+                <div class="run-mail" id="run-greet-mail"></div>
+              </div>
+
+              <!-- QUESTION -->
+              <div class="run-pv" id="run-pv-question" style="display:none">
+                <div class="run-q-progress" id="run-q-progress"></div>
+                <div class="run-step-tag" id="run-q-counter">Frage 1 von 4</div>
+                <h3 class="run-q-text" id="run-q-text">—</h3>
+                <div class="run-stars" id="run-stars"></div>
+                <div class="run-rating-row">
+                  <span class="run-rating-val" id="run-rating-val">—</span>
+                  <span class="run-rating-lbl">von 5 Sternen</span>
+                </div>
+                <div class="run-timer" id="run-timer">
+                  <div class="run-ring">
+                    <svg width="80" height="80" viewBox="0 0 72 72">
+                      <circle class="run-ring-bg" cx="36" cy="36" r="31" fill="none" stroke-width="6"></circle>
+                      <circle class="run-ring-fg" id="run-ring-fg" cx="36" cy="36" r="31" fill="none" stroke-width="6"
+                              stroke-dasharray="194.78" stroke-dashoffset="0"></circle>
+                    </svg>
+                    <div class="run-ring-num" id="run-ring-num">3</div>
+                  </div>
+                  <div class="run-timer-txt"><b>Karte ruhig halten …</b>Antwort wird gespeichert.</div>
+                </div>
+                <div class="run-saved-flash" id="run-saved-flash">✓ Antwort gespeichert</div>
+              </div>
+
+              <!-- THANKS -->
+              <div class="run-pv" id="run-pv-thanks" style="display:none">
+                <div class="run-hi">Geschafft!</div>
+                <h2 class="run-hero">Danke <span id="run-thanks-name" class="run-accent">—</span></h2>
+                <p>Lass uns gern in Kontakt bleiben.<br>Wir melden uns bei dir.</p>
+              </div>
+
             </div>
           </div>
 
-          <div class="question-progress">
-            <div class="question-progress-head">
-              <span>Progress</span>
-              <strong id="run-progress-label">0%</strong>
+          <!-- RECHTS (2/3) — Kamera-Draufsicht -->
+          <div class="run-right">
+            <img id="run-live-image" class="run-cam-image" alt="Kamera-Live" />
+            <div class="run-sections" id="run-sections"></div>
+            <div class="run-hud">
+              <span class="run-rec"><span class="run-led"></span> REC · LIVE</span>
+              <span class="run-hud-spacer"></span>
+              <span id="run-frame-age" class="run-frame-age-chip">—</span>
             </div>
-            <div class="question-progress-track">
-              <div id="run-progress-fill" class="question-progress-fill"></div>
-            </div>
+            <div class="run-hint" id="run-hint">Bereit – Visitenkarte auflegen.</div>
           </div>
 
-          <div class="score-meter">
-            <div id="run-meter-fill" class="score-meter-fill"></div>
-          </div>
-          <div class="meter-scale">
-            <span id="run-min-label">0</span>
-            <span id="run-score-value">--</span>
-            <span id="run-max-label">10</span>
-          </div>
-
-          <div class="pill-row">
-            <span class="pill">phase: <strong id="pill-phase">WAIT_FOR_MOVEMENT</strong></span>
-            <span class="pill">source: <strong id="pill-source">idle</strong></span>
-            <span class="pill">fusion: <strong id="pill-fusion">NO_TARGET</strong></span>
-            <span class="pill">conf: <strong id="pill-confidence">--</strong></span>
-          </div>
-        </article>
+        </div>
       </section>
 
       <section id="configure-view" class="panel configure-layout hidden">

@@ -22,6 +22,9 @@ class TrackingState:
         camera_config = context.config.get("camera", {})
         fps = float(camera_config.get("fps", 30) or 30)
         self.poll_interval = float(tracking_config.get("poll_interval_s", max(0.01, 1.0 / fps)))
+        self.live_jpeg_quality = int(
+            (context.config.get("server", {}) or {}).get("live_stream_jpeg_quality", 70)
+        )
 
     def enter(self):
         self.context.runtime["current_state"] = self.name
@@ -80,14 +83,28 @@ class TrackingState:
                 if self.context.logger:
                     self.context.logger.warning("TRACKING: No frame available (camera lost?)")
                 return "IDLE_NO_CARD"
-            #self.context.runtime["last_frame"] = frame
             self.context.runtime["last_frame"] = full_frame
             self.context.runtime["last_live_frame"] = frame
-            self.context.runtime["last_live_frame_ts"] = time.time()
+            ts = time.time()
+            self.context.runtime["last_live_frame_ts"] = ts
             self.context.runtime["live_to_full_scale"] = {
                 "x": scale_x,
                 "y": scale_y,
             }
+            # Encode clean JPEG immediately, before hand detection, so the
+            # run-mode live endpoint always has a fresh frame regardless of
+            # how long MediaPipe takes.
+            try:
+                import cv2 as _cv2
+                _ok, _enc = _cv2.imencode(
+                    ".jpg", frame,
+                    [int(_cv2.IMWRITE_JPEG_QUALITY), self.live_jpeg_quality],
+                )
+                if _ok:
+                    self.context.runtime["last_live_frame_jpeg"] = _enc.tobytes()
+                    self.context.runtime["last_live_frame_jpeg_ts"] = ts
+            except Exception:
+                pass
         except Exception as e:
             if self.context.logger:
                 self.context.logger.warning(f"TRACKING: Camera read failed: {e}")
@@ -363,9 +380,14 @@ class TrackingState:
             1,
         )
 
-        success, encoded = cv2.imencode(".jpg", overlay)
+        success, encoded = cv2.imencode(
+            ".jpg",
+            overlay,
+            [int(cv2.IMWRITE_JPEG_QUALITY), self.live_jpeg_quality],
+        )
         if success:
             self.context.runtime["last_debug_frame_jpeg"] = encoded.tobytes()
+            self.context.runtime["last_debug_frame_jpeg_ts"] = time.time()
 
     def exit(self):
         if self.context.logger:

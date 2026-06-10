@@ -20,6 +20,9 @@ class CandidateDetectedState:
             context.config.get("identity", {}).get("precheck", {}).get("candidate_loop_hz", 2.0)
         )
         self.poll_interval = max(0.01, 1.0 / max(candidate_loop_hz, 0.1))
+        self.live_jpeg_quality = int(
+            (context.config.get("server", {}) or {}).get("live_stream_jpeg_quality", 70)
+        )
         self.identity_precheck_max_duration_s = float(
             context.config.get("identity", {}).get("precheck", {}).get("max_duration_s", 1.0)
         )
@@ -77,13 +80,26 @@ class CandidateDetectedState:
                 self.context.logger.warning("CANDIDATE_DETECTED: No frame available (camera lost?)")
             return "IDLE_NO_CARD"
         frame, scale_x, scale_y = make_live_frame(full_frame, self.context.config)
+        ts = time.time()
         self.context.runtime["last_frame"] = full_frame
         self.context.runtime["last_live_frame"] = frame
-        self.context.runtime["last_live_frame_ts"] = time.time()
+        self.context.runtime["last_live_frame_ts"] = ts
         self.context.runtime["live_to_full_scale"] = {
             "x": scale_x,
             "y": scale_y,
         }
+        # Keep the live stream fresh during candidate confirmation too.
+        try:
+            import cv2 as _cv2
+            _ok, _enc = _cv2.imencode(
+                ".jpg", frame,
+                [int(_cv2.IMWRITE_JPEG_QUALITY), self.live_jpeg_quality],
+            )
+            if _ok:
+                self.context.runtime["last_live_frame_jpeg"] = _enc.tobytes()
+                self.context.runtime["last_live_frame_jpeg_ts"] = ts
+        except Exception:
+            pass
         
         # Run detector
         try:
