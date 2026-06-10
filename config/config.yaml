@@ -52,7 +52,11 @@ workspace:
       height: 364
 
 detector:
-  type: "yolo"
+  # "classical" is the working detector on this device: the only model file is
+  # the stock COCO yolov8n.pt, which has no "business_card" class and therefore
+  # can never produce a card candidate. Switch back to "yolo" only with a model
+  # actually trained on business cards.
+  type: "classical"
   enabled: true
   business_card_label: "business_card"
   require_business_card_candidate: true
@@ -243,7 +247,9 @@ camera:
   fps: 30
   fourcc: "MJPG"
   retry_attempts: 3
-  idle_poll_interval: 0.5
+  # Drives the IDLE live-view refresh rate (0.1 ≈ 10 Hz preview). Detection
+  # load is capped independently via detector.loop_hz.
+  idle_poll_interval: 0.05
 
   live_processing:
     enabled: true

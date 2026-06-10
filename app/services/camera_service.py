@@ -1,5 +1,4 @@
 import time
-from turtle import width
 
 import cv2
 
@@ -55,6 +54,10 @@ class CameraService:
             capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
             capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
             capture.set(cv2.CAP_PROP_FPS, fps)
+
+        # The consumers poll slower than the camera FPS; without this the V4L2
+        # queue keeps several frames and every read returns a stale frame.
+        capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         # Read one frame after setting properties, so the driver actually applies them.
         ret, frame = capture.read()

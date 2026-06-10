@@ -1,5 +1,37 @@
 # Phase 10 — Reliability/Perf/systemd: Errors & Fixes
 
+## 2026-06-10 — No detection ever (stuck in IDLE_NO_CARD) + jerky live view
+
+- **Observed:** after the CUDA/LD_LIBRARY_PATH fix, no detection/tracking/snapshot
+  at all; state stayed `IDLE_NO_CARD`; UI "latency" oscillated ~30/~100/~800 ms;
+  config changes (detector type, loop_hz, …) appeared to have no effect.
+- **Cause (detection):** `models/yolov8n.pt` on this device is the *stock COCO*
+  model (80 classes, no `business_card`). `YoloCardDetector` filtered every box
+  by label, so YOLO could never yield a candidate. Before the CUDA fix the YOLO
+  import failed and the app silently fell back to the classical detector — that
+  is why detection used to work. Fixing CUDA activated the useless YOLO model
+  and thereby "broke" the pipeline. Config changes looked ineffective because
+  most of them only matter in TRACKING, which was never reached.
+- **Cause (perf/jerkiness):** in IDLE the live frame is produced by the idle
+  loop at `camera.idle_poll_interval` = 0.5 s (2 Hz) while the UI polls at
+  ~12 Hz → displayed frame age oscillated 0–800 ms. Additionally no
+  `CAP_PROP_BUFFERSIZE` was set, so slow polling of the 30 fps stream always
+  returned stale buffered frames. Camera resolution was irrelevant — matching
+  the observation that 1080p changed nothing.
+- **Fix:**
+  - `config.yaml`: `detector.type` → `classical`; restored tuned
+    `loop_hz`/poll/SSE intervals; `idle_poll_interval` 0.5 → 0.1;
+    `debug_log_every_frame` off.
+  - `yolo_card_detector.py`: model is marked unavailable (with a WARNING log)
+    when it lacks the configured `business_card_label` → existing classical
+    fallback engages instead of silently never detecting.
+  - `camera_service.py`: set `CAP_PROP_BUFFERSIZE=1`; removed stray
+    `from turtle import width`.
+- **Verification:** offline smoke test — YOLO guard flags COCO model
+  (`available=False`, clear error), classical detector finds a synthetic card
+  (`visible=True`, conf 1.00). Live booth test pending service restart.
+- **Status:** IN_PROGRESS (awaiting live restart + card-on-table test).
+
 ## 2026-06-10 — `stop`/`disable cv-card-demo.target` had no effect
 
 - **Observed:** `systemctl stop cv-card-demo.target` left the backend running;

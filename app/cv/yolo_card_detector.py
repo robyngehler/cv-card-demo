@@ -154,6 +154,29 @@ class YoloCardDetector:
 
         try:
             self.model = yolo_class(model_path)
+
+            # A model without the configured card class (e.g. stock COCO
+            # weights) would load fine but never produce a candidate. Treat it
+            # as unavailable so CardDetectorService falls back to classical
+            # with a visible warning instead of failing silently.
+            model_labels = {str(name) for name in (getattr(self.model, "names", {}) or {}).values()}
+            if model_labels and self.business_card_label not in model_labels:
+                self.model = None
+                self.status = {
+                    "status": "ERROR",
+                    "detector": self.detector_name,
+                    "model_path": model_path,
+                    "last_error": (
+                        f"model has no class '{self.business_card_label}' "
+                        f"(model classes: {sorted(model_labels)[:5]}... total={len(model_labels)})"
+                    ),
+                }
+                if self.context.logger is not None:
+                    self.context.logger.warning(
+                        f"YOLO detector disabled: {self.status['last_error']} model={model_path}"
+                    )
+                return
+
             self.device = self._select_device(yolo_config)
             if self.device != "cpu":
                 try:
