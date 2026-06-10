@@ -149,10 +149,23 @@ Config: `config.yaml → vector`. Optional — app continues if Qdrant is unavai
 
 ---
 
-## WledClient (`wled_client.py`) — optional
+## WLED output (`wled_output_service.py` + `wled_client.py`) — optional
 
-WLED is optional and **not** required. Maps score → LED strip pattern via
-WLED JSON API. Must never block camera, CV, or UI. If unreachable: log warning,
-set health to `DEGRADED`, keep running.
+WLED is optional and **not** required. `WledOutputService` (registered as the
+`wled` service) maps the *displayed* score → active LED count + red→blue→cyan-green
+color → two-segment `/json/state` payload. All network I/O runs on its own daemon
+worker thread (rate-limited via `update_hz`, de-duplicated), so a slow/absent ESP
+never blocks camera, CV, or UI. `WledClient` is the thin stdlib-`urllib` HTTP
+client underneath. If unreachable: log warning, health `DEGRADED`, keep running;
+if disabled: `OPTIONAL_DISABLED` and fully inert (no thread, no traffic).
 
-Config: `config.yaml → wled`.
+Single integration point: `UIService.publish_score` forwards the same score the
+UI shows (`None` when not visible) — no second scoring path. Manual test:
+`scripts/test_wled_score.py`. Config: `config.yaml → wled`.
+
+## PerfMonitor (`../utils/perf.py`) — `perf` service
+
+Always-on timing. States/services call `perf.record(stage, ms)` or
+`with perf.span(stage):`; the TRACKING loop calls `perf.maybe_log("TRACKING")`
+which logs per-stage p50/p95/max every `perf.log_interval_s` (WARNING when a
+stage exceeds `perf.spike_warn_ms`). Surfaced at `/api/health → services.perf`.

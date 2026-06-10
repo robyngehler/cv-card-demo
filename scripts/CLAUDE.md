@@ -42,6 +42,9 @@ test_detector_batch.py           — batch test detector on saved images
 test_detector_cv.py              — unit-style test for classical detector logic
 test_hand_occlusion_synthetic.py — synthetic hand occlusion test cases
 test_tracking_continuity.py      — verify tracker continuity across lost frames
+test_wled_score.py               — post a fixed score / idle to a WLED device
+                                   (reuses the real score→LED→color mapping;
+                                   works even while wled.enabled is false)
 ```
 
 ## Avoid

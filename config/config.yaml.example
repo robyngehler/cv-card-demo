@@ -14,6 +14,13 @@ boot:
   max_boot_duration_s: 10
   allow_degraded_wled: true
 
+error_safe:
+  # ERROR_SAFE self-heals: waits a backing-off interval, then retries the camera
+  # via INIT_CAM. Set auto_recover: false to keep it terminal.
+  auto_recover: true
+  retry_interval_s: 8
+  max_retry_interval_s: 60
+
 workspace:
   card:
     mode: "manual_rect"
@@ -186,6 +193,12 @@ logging:
   log_to_console: true
   log_to_file: true
 
+perf:
+  # Always-on timing: logs a PERF line (per-stage p50/p95/max) every
+  # log_interval_s; stages over spike_warn_ms are logged at WARNING.
+  log_interval_s: 5.0
+  spike_warn_ms: 80.0
+
 camera:
   init_in_boot: false
   preferred_backend: "opencv"
@@ -196,7 +209,24 @@ camera:
   idle_poll_interval: 0.5
 
 wled:
+  # Optional LED output mirroring the displayed score. When the Jetson joins the
+  # ESP's WLED access point ("WLED-AP"), WLED's AP default address is
+  # http://4.3.2.1.
   enabled: false
-  host: ""
+  host: ""                 # e.g. "http://4.3.2.1" or "http://192.168.4.50"
+  endpoint: "/json/state"
+  led_count: 60
+  brightness: 160
   timeout_ms: 300
+  update_hz: 15
+  force_refresh_s: 2.0
+  min_leds_when_visible: 1
   fail_mode: "optional"
+
+  idle:
+    brightness: 80
+
+  colors:
+    low_rgb: [255, 20, 20]
+    mid_rgb: [0, 80, 255]
+    high_rgb: [0, 255, 170]

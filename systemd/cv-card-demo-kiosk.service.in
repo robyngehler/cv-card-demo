@@ -2,6 +2,8 @@
 Description=CV Card Demo Local Kiosk Browser
 After=graphical.target cv-card-demo-backend.service
 Wants=cv-card-demo-backend.service
+# Bind to the demo target so stop/restart of the target propagates here.
+PartOf=cv-card-demo.target
 
 [Service]
 Type=simple
@@ -19,5 +21,6 @@ RestartSec=3
 StandardOutput=journal
 StandardError=journal
 
+# Enabled via the target only — see backend unit for the rationale.
 [Install]
-WantedBy=graphical.target
+WantedBy=cv-card-demo.target

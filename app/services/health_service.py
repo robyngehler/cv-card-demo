@@ -41,7 +41,8 @@ class HealthService:
                 "persistence": self._generic_service_status("persistence"),
                 "vector": self._generic_service_status("vector"),
                 "cv2": self._cv2_status(),
-                "wled": {"status": self._wled_status()},
+                "wled": self._generic_service_status("wled"),
+                "perf": self._generic_service_status("perf"),
             },
             "next_state": cfg.get("boot", {}).get("next_state", "INIT_CAM"),
         }
@@ -99,9 +100,3 @@ class HealthService:
         if camera is None or camera.cv2_version is None:
             return {"status": "NOT_CHECKED"}
         return {"status": "OK", "version": camera.cv2_version}
-
-    def _wled_status(self):
-        wled = self.context.services.get("wled")
-        if wled is None:
-            return "OPTIONAL_DISABLED"
-        return "OK" if wled.is_available() else "DEGRADED"

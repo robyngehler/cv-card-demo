@@ -45,16 +45,34 @@ render() {
   echo "Installed $dest"
 }
 
+# Clean up symlinks from any previous install BEFORE overwriting the unit files.
+# `disable` reads the [Install] section of the units currently on disk, so it
+# must run while the old files are still present. Earlier versions enabled the
+# services directly into multi-user.target / graphical.target, which made
+# `disable cv-card-demo.target` ineffective (the services kept autostarting).
+# Ignore errors when the units are not yet installed.
+sudo systemctl disable cv-card-demo.target cv-card-demo-backend.service cv-card-demo-kiosk.service 2>/dev/null || true
+
 render "cv-card-demo-backend.service.in" "cv-card-demo-backend.service"
 render "cv-card-demo-kiosk.service.in" "cv-card-demo-kiosk.service"
 sudo cp "$SRC_DIR/cv-card-demo.target" "$DST_DIR/"
 echo "Installed cv-card-demo.target"
 
 sudo systemctl daemon-reload
+sudo systemctl reset-failed cv-card-demo.target cv-card-demo-backend.service cv-card-demo-kiosk.service 2>/dev/null || true
+
+# Enable ONLY the target into the boot target (multi-user.target). The services
+# are bound to the target via WantedBy=cv-card-demo.target (start) + PartOf=
+# (stop/restart), so enabling the target is enough for boot autostart, and
+# `disable cv-card-demo.target` reliably stops the whole stack from autostarting.
 sudo systemctl enable cv-card-demo.target cv-card-demo-backend.service cv-card-demo-kiosk.service
 
 echo
 echo "Done. Start now with:"
 echo "  sudo systemctl start cv-card-demo.target"
+echo "Stop everything with:"
+echo "  sudo systemctl stop cv-card-demo.target"
+echo "Disable boot autostart with:"
+echo "  sudo systemctl disable cv-card-demo.target"
 echo "Backend logs:"
 echo "  journalctl -u cv-card-demo-backend.service -f"

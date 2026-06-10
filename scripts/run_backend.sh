@@ -14,6 +14,11 @@ if [ ! -d "$VENV_DIR" ]; then
   exit 1
 fi
 
+# Ensure LD_LIBRARY_PATH is bound before sourcing activate: systemd starts the
+# service with a clean environment where it is unset, and `set -u` would abort
+# if activate (or anything it sources) references an unbound $LD_LIBRARY_PATH.
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 

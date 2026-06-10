@@ -1,6 +1,5 @@
 from app.services.health_service import HealthService
 from app.services.ui_service import UIService
-from app.services.wled_client import WledClient
 
 
 class BootState:
@@ -27,8 +26,9 @@ class BootState:
         if self.context.services.get("health") is None:
             self.context.services["health"] = HealthService(self.context)
 
-        if self.context.services.get("wled") is None and self.context.config.get("wled", {}).get("enabled", False):
-            self.context.services["wled"] = WledClient(self.context)
+        # The optional WLED output adapter is registered in main.py
+        # (WledOutputService); BOOT does not need to create it. WLED must never
+        # be a BOOT dependency.
 
         self.context.runtime["substate"] = "BOOT_START_UI_SERVICE"
         try:

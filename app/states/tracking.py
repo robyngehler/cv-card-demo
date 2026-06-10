@@ -25,6 +25,7 @@ class TrackingState:
         self.live_jpeg_quality = int(
             (context.config.get("server", {}) or {}).get("live_stream_jpeg_quality", 70)
         )
+        self.perf = None
 
     def enter(self):
         self.context.runtime["current_state"] = self.name
@@ -32,6 +33,7 @@ class TrackingState:
         fusion_tracker = self.context.get_service("fusion_tracker", default=None)
         if fusion_tracker is not None:
             fusion_tracker.reset()
+        self.perf = self.context.get_service("perf", default=None)
 
         if self.context.logger:
             self.context.logger.info(
@@ -105,6 +107,11 @@ class TrackingState:
                     self.context.runtime["last_live_frame_jpeg_ts"] = ts
             except Exception:
                 pass
+            t_enc = time.perf_counter()
+            if self.perf is not None:
+                self.perf.record("read", (t1 - t0) * 1000.0)
+                self.perf.record("resize", (t_resize - t1) * 1000.0)
+                self.perf.record("encode_clean", (t_enc - t_resize) * 1000.0)
         except Exception as e:
             if self.context.logger:
                 self.context.logger.warning(f"TRACKING: Camera read failed: {e}")
@@ -114,6 +121,8 @@ class TrackingState:
         try:
             result = detector.detect(frame, state_name=self.name)
             t2 = time.perf_counter()
+            if self.perf is not None:
+                self.perf.record("card_detect", (t2 - t_enc) * 1000.0)
         except Exception as e:
             if self.context.logger:
                 self.context.logger.warning(f"TRACKING: Detection failed: {e}")
@@ -141,6 +150,8 @@ class TrackingState:
             hand_measurement = hand_tracker.detect(frame, now=now)
         self.context.runtime["last_hand_measurement"] = hand_measurement
         t3 = time.perf_counter()
+        if self.perf is not None:
+            self.perf.record("hand", (t3 - t2) * 1000.0)
 
         session = self.context.runtime.get("session", {})
         if questionnaire is not None and not session.get("session_id") and card_measurement is not None:
@@ -160,6 +171,8 @@ class TrackingState:
             now=now,
         )
         t4 = time.perf_counter()
+        if self.perf is not None:
+            self.perf.record("fusion", (t4 - t3) * 1000.0)
         debug_every_frame = bool(self.context.config.get("tracking", {}).get("debug_log_every_frame", False))
         if self.context.logger and debug_every_frame:
             self.context.logger.info(
@@ -198,6 +211,7 @@ class TrackingState:
         questionnaire_context = {}
         if questionnaire is not None:
             questionnaire_context = questionnaire.update(fusion_measurement, now=now)
+        t5 = time.perf_counter()
 
         self._publish_score(
             ui_service,
@@ -207,6 +221,7 @@ class TrackingState:
             hand_measurement,
             card_measurement,
         )
+        t6 = time.perf_counter()
         self._update_debug_frame(
             frame,
             workspace_service,
@@ -214,6 +229,13 @@ class TrackingState:
             hand_measurement,
             fusion_measurement,
         )
+        if self.perf is not None:
+            t7 = time.perf_counter()
+            self.perf.record("questionnaire", (t5 - t4) * 1000.0)
+            self.perf.record("publish", (t6 - t5) * 1000.0)
+            self.perf.record("debug_encode", (t7 - t6) * 1000.0)
+            self.perf.record("loop_total", (t7 - t0) * 1000.0)
+            self.perf.maybe_log("TRACKING")
 
         if questionnaire is not None and questionnaire.consume_snapshot_request():
             return "SNAPSHOT"

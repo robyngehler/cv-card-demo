@@ -18,6 +18,9 @@ class IdleNoCardState:
     def enter(self):
         self.context.runtime["current_state"] = self.name
         self.context.runtime["substate"] = "IDLE_ENTER"
+        # Reaching IDLE means the camera/CV pipeline is healthy again — clear the
+        # ERROR_SAFE backoff so a future failure retries quickly from the start.
+        self.context.runtime["error_safe_attempts"] = 0
         if self.context.logger:
             self.context.logger.info("Entering IDLE_NO_CARD state")
 

@@ -235,6 +235,19 @@ class UIService:
         Args:
             score (dict): Score data with keys like visible, score, x_normalized, confidence, state, source
         """
+        # Mirror the same displayed score onto the optional WLED LED bar. This is
+        # the single integration point so the strip and the UI can never diverge.
+        # The WLED service is non-blocking (its own worker thread) and inert when
+        # disabled, so this is safe to call on every publish.
+        wled = self.context.services.get("wled")
+        if wled is not None:
+            try:
+                visible = bool(isinstance(score, dict) and score.get("visible"))
+                wled.update_displayed_score(score.get("score") if visible else None)
+            except Exception as exc:
+                if self.context.logger:
+                    self.context.logger.debug(f"WLED score forward failed (non-critical): {exc}")
+
         if self.server and not self.server.should_exit and getattr(self.server, "server", None):
             # Try to schedule broadcast on the server's event loop
             try:
@@ -425,17 +438,27 @@ class UIService:
         self.active_sse_connections += 1
         interval_s = float(self.context.config.get("server", {}).get("ui_events_interval_s", 0.33))
         interval_s = max(0.1, interval_s)
+        perf = self.context.get_service("perf", default=None)
         try:
             while True:
                 try:
-                    snapshot = self._build_ui_snapshot()
-                    payload = json.dumps(snapshot)
+                    if perf is not None:
+                        with perf.span("ui_snapshot_build"):
+                            snapshot = self._build_ui_snapshot()
+                        with perf.span("ui_snapshot_json"):
+                            payload = json.dumps(snapshot)
+                    else:
+                        snapshot = self._build_ui_snapshot()
+                        payload = json.dumps(snapshot)
                     yield f"event: ui_snapshot\\ndata: {payload}\\n\\n"
                 except Exception as exc:
                     if self.context.logger:
                         self.context.logger.warning(f"UI events snapshot build failed: {exc}")
                     payload = json.dumps({"type": "ui_heartbeat", "timestamp": time.time()})
                     yield f"event: ui_heartbeat\\ndata: {payload}\\n\\n"
+                if perf is not None:
+                    # Ensure perf aggregates flush even when not in TRACKING.
+                    perf.maybe_log("UI")
                 await asyncio.sleep(interval_s)
         except asyncio.CancelledError:
             return

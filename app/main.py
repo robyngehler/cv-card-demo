@@ -19,8 +19,9 @@ from app.services.snapshot_service import SnapshotService
 from app.services.ui_service import UIService
 from app.services.vector_service import VectorService
 from app.services.workspace_service import WorkspaceService
-from app.services.wled_client import WledClient
+from app.services.wled_output_service import WledOutputService
 from app.state_machine import StateMachine
+from app.utils.perf import PerfMonitor
 
 
 def parse_args():
@@ -38,6 +39,16 @@ def main():
     ctx.runtime["start_time"] = time.time()
     ctx.runtime["boot_id"] = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 
+    perf_cfg = config.get("perf", {}) or {}
+    ctx.register_service(
+        "perf",
+        PerfMonitor(
+            logger,
+            log_interval_s=float(perf_cfg.get("log_interval_s", 5.0)),
+            spike_warn_ms=float(perf_cfg.get("spike_warn_ms", 80.0)),
+        ),
+    )
+
     ctx.register_service("health", HealthService(ctx))
     ctx.register_service("ui", UIService(ctx))
     ctx.register_service("workspace", WorkspaceService(ctx))
@@ -54,8 +65,10 @@ def main():
     ctx.register_service("candidate_precheck", CandidatePrecheckService(ctx))
     ctx.register_service("camera_control", CameraControlService(ctx))
 
-    if config.get("wled", {}).get("enabled", False):
-        ctx.register_service("wled", WledClient(ctx))
+    # WLED is an optional output adapter. Always register the service so health
+    # reports a consistent status; it stays inert (OPTIONAL_DISABLED) and starts
+    # no worker thread or network traffic unless wled.enabled is true.
+    ctx.register_service("wled", WledOutputService(ctx))
 
     state_machine = StateMachine(ctx)
     ctx.state_machine = state_machine

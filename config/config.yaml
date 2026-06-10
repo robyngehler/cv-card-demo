@@ -16,6 +16,14 @@ boot:
   max_boot_duration_s: 10
   allow_degraded_wled: true
 
+error_safe:
+  # ERROR_SAFE is no longer a dead-end: it waits a backing-off interval and then
+  # retries the camera via INIT_CAM so the booth self-heals when a disconnected
+  # camera is reconnected. Set auto_recover: false to keep it terminal.
+  auto_recover: true
+  retry_interval_s: 8
+  max_retry_interval_s: 60
+
 workspace:
   card:
     mode: "manual_rect"
@@ -49,7 +57,7 @@ detector:
   business_card_label: "business_card"
   require_business_card_candidate: true
   loop_hz:
-    default: 4
+    default: 30
     IDLE_NO_CARD: 4
     CANDIDATE_DETECTED: 8
     TRACKING: 3
@@ -106,7 +114,7 @@ tracking:
     # MediaPipe's process() holds the GIL, so model_complexity + process_max_dim
     # + detect_hz matter more than the thread itself.
     async: true
-    detect_hz: 6.0          # max hand-detection rate (snapshot guard only)
+    detect_hz: 30.0          # max hand-detection rate (snapshot guard only)
     model_complexity: 0     # 0 = lite landmark model (much faster on CPU)
     process_max_dim: 256    # downscale the hand ROI before process()
     min_detection_confidence: 0.5
@@ -217,6 +225,15 @@ logging:
   log_to_console: true
   log_to_file: true
 
+perf:
+  # Always-on timing instrumentation. Every log_interval_s the backend logs a
+  # PERF line with per-stage p50/p95/max (read, resize, encode_clean,
+  # card_detect, hand, fusion, questionnaire, publish, debug_encode,
+  # loop_total, ui_snapshot_build). A stage whose max exceeds spike_warn_ms is
+  # logged at WARNING so periodic latency spikes are easy to grep.
+  log_interval_s: 5.0
+  spike_warn_ms: 80.0
+
 camera:
   init_in_boot: false
   preferred_backend: "v4l2"
@@ -234,7 +251,25 @@ camera:
     height: 720
 
 wled:
+  # Optional LED output. Mirrors the displayed score onto a WLED LED bar.
+  # Leave disabled until the ESP32/WLED is reachable. When the Jetson joins the
+  # ESP's own WLED access point ("WLED-AP"), WLED's AP default address is
+  # http://4.3.2.1 — set host accordingly.
   enabled: false
-  host: ""
+  host: ""                 # e.g. "http://4.3.2.1" (ESP AP) or "http://192.168.4.50"
+  endpoint: "/json/state"
+  led_count: 14
+  brightness: 160
   timeout_ms: 300
+  update_hz: 20            # max LED refresh rate (>= this interval between posts)
+  force_refresh_s: 2.0     # resend unchanged state at least this often
+  min_leds_when_visible: 1 # light at least N LEDs while a score is shown
   fail_mode: "optional"
+
+  idle:
+    brightness: 80         # idle/no-card: LEDs off at this brightness
+
+  colors:
+    low_rgb: [255, 20, 20]   # low score  -> red
+    mid_rgb: [0, 80, 255]    # mid score  -> blue
+    high_rgb: [0, 255, 170]  # high score -> cyan-green

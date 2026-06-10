@@ -2,6 +2,9 @@
 Description=CV Card Demo Backend and State Machine
 Wants=network-online.target
 After=network-online.target
+# Bind this service to the demo target so `systemctl stop/restart
+# cv-card-demo.target` propagates here (PartOf = stop/restart only, not start).
+PartOf=cv-card-demo.target
 StartLimitIntervalSec=60
 StartLimitBurst=10
 
@@ -22,5 +25,8 @@ RestartSec=2
 StandardOutput=journal
 StandardError=journal
 
+# Enabled via the target only (WantedBy=cv-card-demo.target), never directly
+# into multi-user.target — otherwise `disable cv-card-demo.target` would not
+# stop the service from autostarting on boot.
 [Install]
-WantedBy=multi-user.target
+WantedBy=cv-card-demo.target
