@@ -31,7 +31,7 @@ def test_model_labels():
             print(f"  Classes ({len(names)}): {list(names.values())}")
 
             # Check for usable labels
-            usable = [v for v in names.values() if v.lower() in ['visiting_card', 'card', 'id']]
+            usable = [v for v in names.values() if v.lower() in ['visiting_card', 'card', 'id', 'with_id_strap', 'without_id_strap']]
             if usable:
                 print(f"  ✓ Usable labels: {usable}")
             else:
@@ -106,7 +106,7 @@ def test_model_inference(model_name: str = "visiting_card", conf: float = 0.25):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "infer":
-        model = sys.argv[2] if len(sys.argv) > 2 else "visiting_card"
+        model = sys.argv[2] if len(sys.argv) > 2 else "id-card"
         test_model_inference(model)
     else:
         test_model_labels()
