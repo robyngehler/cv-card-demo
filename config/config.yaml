@@ -275,7 +275,7 @@ wled:
   enabled: false
   host: ""                 # e.g. "http://4.3.2.1" (ESP AP) or "http://192.168.4.50"
   endpoint: "/json/state"
-  led_count: 14
+  led_count: 15            # LEDs in the score segment
   brightness: 160
   timeout_ms: 300
   update_hz: 20            # max LED refresh rate (>= this interval between posts)
@@ -283,8 +283,15 @@ wled:
   min_leds_when_visible: 1 # light at least N LEDs while a score is shown
   fail_mode: "optional"
 
+  segment_id: 0            # score segment ID
+  start_led: 0             # score segment start LED
+  stop_led: 15             # score segment stop LED (exclusive)
+  fill_direction: "high_to_low"  # fill from stop_led downward to start_led
+  preserve_segments: [1]   # don't touch these segments when updating
+
   idle:
     brightness: 80         # idle/no-card: LEDs off at this brightness
+    mode: "score_segment_off"
 
   colors:
     low_rgb: [255, 20, 20]   # low score  -> red

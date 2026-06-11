@@ -51,6 +51,13 @@ class WledOutputService:
         self.force_refresh_s = float(cfg.get("force_refresh_s", 2.0))
         self.min_leds_when_visible = int(cfg.get("min_leds_when_visible", 1))
 
+        # Segment configuration
+        self.segment_id = int(cfg.get("segment_id", 0))
+        self.start_led = int(cfg.get("start_led", 0))
+        self.stop_led = int(cfg.get("stop_led", self.led_count))
+        self.fill_direction = cfg.get("fill_direction", "high_to_low")
+        self.preserve_segments = list(cfg.get("preserve_segments", []))
+
         colors = cfg.get("colors", {}) or {}
         self.low_color = tuple(colors.get("low_rgb", [255, 20, 20]))
         self.mid_color = tuple(colors.get("mid_rgb", [0, 80, 255]))
@@ -88,7 +95,8 @@ class WledOutputService:
             if self.logger:
                 self.logger.info(
                     f"[WLED] output enabled host={self.client.host} "
-                    f"led_count={self.led_count} update_hz={self.update_hz}"
+                    f"segment={self.segment_id} leds={self.start_led}-{self.stop_led} "
+                    f"fill={self.fill_direction} update_hz={self.update_hz}"
                 )
         elif self.enabled and not self.client.configured:
             self.status = "DEGRADED"
@@ -124,24 +132,39 @@ class WledOutputService:
             return _lerp_rgb(self.low_color, self.mid_color, score / 0.5)
         return _lerp_rgb(self.mid_color, self.high_color, (score - 0.5) / 0.5)
 
+    def _calculate_active_range(self, active: int) -> Tuple[int, int]:
+        """Calculate LED range for active LEDs based on fill direction."""
+        if self.fill_direction == "high_to_low":
+            active_start = max(self.start_led, self.stop_led - active)
+            active_stop = self.stop_led
+        else:
+            active_start = self.start_led
+            active_stop = min(self.stop_led, self.start_led + active)
+        return (active_start, active_stop)
+
     def build_payload(self, score: Optional[float], idle: bool) -> Dict[str, Any]:
         if idle or score is None:
+            seg = [{"id": self.segment_id, "start": self.start_led, "stop": self.stop_led, "col": [[0, 0, 0]], "fx": 0}]
             return {
                 "on": True,
                 "bri": self.idle_brightness,
-                "seg": [{"id": 0, "start": 0, "stop": self.led_count, "col": [[0, 0, 0]], "fx": 0}],
+                "seg": seg,
             }
         active = self.score_to_led_count(score)
         color: List[int] = list(self.score_to_color(score))
+
         if active <= 0:
-            seg = [{"id": 0, "start": 0, "stop": self.led_count, "col": [[0, 0, 0]], "fx": 0}]
+            seg = [{"id": self.segment_id, "start": self.start_led, "stop": self.stop_led, "col": [[0, 0, 0]], "fx": 0}]
         elif active >= self.led_count:
-            seg = [{"id": 0, "start": 0, "stop": self.led_count, "col": [color], "fx": 0}]
+            seg = [{"id": self.segment_id, "start": self.start_led, "stop": self.stop_led, "col": [color], "fx": 0}]
         else:
-            seg = [
-                {"id": 0, "start": 0, "stop": active, "col": [color], "fx": 0},
-                {"id": 1, "start": active, "stop": self.led_count, "col": [[0, 0, 0]], "fx": 0},
-            ]
+            active_start, active_stop = self._calculate_active_range(active)
+            seg = [{"id": self.segment_id, "start": active_start, "stop": active_stop, "col": [color], "fx": 0}]
+            if active_start > self.start_led:
+                seg.append({"id": 31, "start": self.start_led, "stop": active_start, "col": [[0, 0, 0]], "fx": 0})
+            if active_stop < self.stop_led:
+                seg.append({"id": 30, "start": active_stop, "stop": self.stop_led, "col": [[0, 0, 0]], "fx": 0})
+
         return {"on": True, "bri": self.brightness, "seg": seg}
 
     def get_status(self) -> Dict[str, Any]:
