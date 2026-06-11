@@ -5,32 +5,43 @@
 - **Observed:** after the CUDA/LD_LIBRARY_PATH fix, no detection/tracking/snapshot
   at all; state stayed `IDLE_NO_CARD`; UI "latency" oscillated ~30/~100/~800 ms;
   config changes (detector type, loop_hz, …) appeared to have no effect.
-- **Cause (detection):** `models/yolov8n.pt` on this device is the *stock COCO*
+- **Root cause (detection):** `models/yolov8n.pt` on this device is the *stock COCO*
   model (80 classes, no `business_card`). `YoloCardDetector` filtered every box
   by label, so YOLO could never yield a candidate. Before the CUDA fix the YOLO
   import failed and the app silently fell back to the classical detector — that
   is why detection used to work. Fixing CUDA activated the useless YOLO model
   and thereby "broke" the pipeline. Config changes looked ineffective because
   most of them only matter in TRACKING, which was never reached.
-- **Cause (perf/jerkiness):** in IDLE the live frame is produced by the idle
+- **Root cause (classical broken):** commit 7b2d9f6 added `area_similarity` check
+  (line 227-229) without tuning config. `expected_card_area_px` was set to 3200
+  px² (tiny, for old smaller resolution), but real business cards in the 664×423
+  workspace are ~14000 px². Area-similarity score was always negative → **every
+  card was silently rejected** by the new check. Classical fallback never reached.
+- **Root cause (perf/jerkiness):** in IDLE the live frame is produced by the idle
   loop at `camera.idle_poll_interval` = 0.5 s (2 Hz) while the UI polls at
   ~12 Hz → displayed frame age oscillated 0–800 ms. Additionally no
   `CAP_PROP_BUFFERSIZE` was set, so slow polling of the 30 fps stream always
   returned stale buffered frames. Camera resolution was irrelevant — matching
   the observation that 1080p changed nothing.
-- **Fix:**
-  - `config.yaml`: `detector.type` → `classical`; restored tuned
-    `loop_hz`/poll/SSE intervals; `idle_poll_interval` 0.5 → 0.1;
-    `debug_log_every_frame` off.
-  - `yolo_card_detector.py`: model is marked unavailable (with a WARNING log)
-    when it lacks the configured `business_card_label` → existing classical
-    fallback engages instead of silently never detecting.
+- **Fix (committed):**
+  - `config.yaml`: detector type classical; `expected_card_area_px` 3200 → 14000;
+    `min_area_similarity` 0.22 → 0.15; `idle_poll_interval` 0.5 → 0.1; restored
+    tuned `loop_hz` and SSE intervals.
+  - `yolo_card_detector.py`: (1) guard marks model unavailable (WARNING log) when
+    it lacks card-like classes (now accepts `business_card`, `visiting_card`,
+    `card`, `id` as aliases); (2) in detect() add label aliases so
+    `visiting_card` label from trained models maps to `business_card` internally.
   - `camera_service.py`: set `CAP_PROP_BUFFERSIZE=1`; removed stray
     `from turtle import width`.
-- **Verification:** offline smoke test — YOLO guard flags COCO model
-  (`available=False`, clear error), classical detector finds a synthetic card
-  (`visible=True`, conf 1.00). Live booth test pending service restart.
-- **Status:** IN_PROGRESS (awaiting live restart + card-on-table test).
+- **Live test results (2026-06-11):**
+  - Classical detector: ✓ Working. Live card detected with confidence 0.719,
+    inference 4.1 ms, area 14748 px² (matches expected).
+  - YOLO visiting_card.pt: Loads on cuda:0 (READY), but produces zero detections
+    on live frame (inference 109 ms but no boxes). Model may be trained on
+    different conditions than your booth lighting/angle. Classical sufficient
+    for MVP.
+- **Status:** DONE. Classical detector reliable. YOLO model available for future
+  tuning if needed.
 
 ## 2026-06-10 — `stop`/`disable cv-card-demo.target` had no effect
 
