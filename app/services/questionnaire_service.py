@@ -74,9 +74,18 @@ class ConfigDrivenQuestionnaireRuntime:
             completed = False
 
         question = self.current_question(index=question_index)
+
+        # Load candidate name from persistence if available
+        candidate_name = None
+        if persistence is not None and candidate_id is not None:
+            candidate = persistence.find_candidate(candidate_id)
+            if candidate is not None:
+                candidate_name = candidate.get("name")
+
         session_payload = {
             "session_id": session_id,
             "candidate_id": candidate_id,
+            "candidate_name": candidate_name,
             "identity_status": identity_status,
             "card_identity_state": identity_status,
             "question_index": question_index,

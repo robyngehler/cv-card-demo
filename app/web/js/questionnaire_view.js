@@ -54,9 +54,15 @@ export function initQuestionnaireView(store) {
 
   store.subscribe((state) => {
     const score = state.score;
+    const candidateName = score.candidate_name || state.session?.candidate_name;
 
     questionLabel.textContent = score.question_label || "Place a business card to begin";
-    identityMessage.textContent = score.message || "System starting...";
+    // Show greeting with name if available
+    let greetingText = score.message || "System starting...";
+    if (candidateName && score.question_phase === "ACTIVE_SCORING") {
+      greetingText = `Hallo ${candidateName}!`;
+    }
+    identityMessage.textContent = greetingText;
     phaseValue.textContent = score.question_phase || state.session.phase || "WAIT_FOR_MOVEMENT";
 
     fusionValue.textContent = score.fusion_state || "NO_TARGET";

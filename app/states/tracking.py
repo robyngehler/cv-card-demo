@@ -287,6 +287,10 @@ class TrackingState:
         if not ui_service:
             return
 
+        # Get candidate name from session if available
+        session = self.context.runtime.get("session", {})
+        candidate_name = session.get("candidate_name")
+
         score = {
             "visible": fusion_measurement.visible,
             "score": fusion_measurement.score,
@@ -299,6 +303,7 @@ class TrackingState:
             "fusion_state": fusion_measurement.fusion_state,
             "question_id": questionnaire_context.get("question_id"),
             "candidate_id": questionnaire_context.get("candidate_id"),
+            "candidate_name": candidate_name,
             "identity_status": questionnaire_context.get("identity_status"),
             "question_label": questionnaire_context.get("question_label"),
             "question_phase": questionnaire_context.get("phase"),

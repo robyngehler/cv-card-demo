@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import re
+import threading
 from typing import Any, Dict, List, Optional
 
 
@@ -18,6 +19,11 @@ class PaddleOcrService:
         self.context = context
         self.backend = None
         self.status = {"status": "NOT_INITIALIZED"}
+        # PaddlePaddle predictors are NOT thread-safe. The precheck (state-machine
+        # thread) and the snapshot post-processing (per-snapshot daemon thread)
+        # share this one backend, so concurrent .ocr() calls segfault the C++
+        # runtime. Serialize every inference call through this lock.
+        self._lock = threading.Lock()
         self._load_backend()
 
     def extract_text(self, image_path: str) -> Dict[str, Any]:
@@ -29,7 +35,8 @@ class PaddleOcrService:
             }
 
         try:
-            results = self.backend.ocr(image_path, cls=True)
+            with self._lock:
+                results = self.backend.ocr(image_path)
         except Exception as exc:
             return {
                 "status": "ERROR",
@@ -40,10 +47,21 @@ class PaddleOcrService:
 
         lines: List[str] = []
         for page in results or []:
-            for detection in page or []:
-                if len(detection) < 2:
-                    continue
-                lines.append(str(detection[1][0]).strip())
+            # New PaddleOCR API (2.7+) returns OCRResult objects (dict-like)
+            if isinstance(page, dict) and 'rec_texts' in page:
+                # New paddlepaddle OCR format with dict access
+                texts = page.get('rec_texts') or []
+                scores = page.get('rec_scores') or []
+                for text, score in zip(texts, scores):
+                    if text and str(text).strip():
+                        lines.append(str(text).strip())
+            else:
+                # Old format: list of detections with (bbox, (text, confidence)) structure
+                for detection in page or []:
+                    if len(detection) < 2:
+                        continue
+                    lines.append(str(detection[1][0]).strip())
+
         raw_text = "\n".join(line for line in lines if line)
         return {
             "status": "OK",
@@ -55,7 +73,7 @@ class PaddleOcrService:
         try:
             paddleocr_module = importlib.import_module("paddleocr")
             paddle_ocr_class = getattr(paddleocr_module, "PaddleOCR")
-            self.backend = paddle_ocr_class(use_angle_cls=True, lang="en")
+            self.backend = paddle_ocr_class(lang="en")
             self.status = {"status": "READY"}
         except Exception as exc:
             self.backend = None

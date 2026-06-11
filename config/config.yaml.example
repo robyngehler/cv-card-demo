@@ -208,6 +208,14 @@ camera:
   fps: 30
   idle_poll_interval: 0.5
 
+  # Optional slider bounds for runtime camera controls. V4L2 exposure often
+  # advertises a far wider range than is usable; cap it for a meaningful slider.
+  # Writing an exposure value automatically switches the camera to manual mode.
+  controls:
+    exposure:
+      min: 0
+      max: 255
+
 wled:
   # Optional LED output mirroring the displayed score. When the Jetson joins the
   # ESP's WLED access point ("WLED-AP"), WLED's AP default address is

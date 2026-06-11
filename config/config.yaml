@@ -267,6 +267,15 @@ camera:
     width: 1080
     height: 720
 
+  # Optional slider bounds for runtime camera controls. The V4L2 driver
+  # advertises an exposure range up to ~4095, but only the low band is usable;
+  # cap it here so the operator can tune meaningfully. Writing an exposure value
+  # automatically switches the camera to manual exposure mode.
+  controls:
+    exposure:
+      min: 0
+      max: 255
+
 wled:
   # Optional LED output. Mirrors the displayed score onto a WLED LED bar.
   # Leave disabled until the ESP32/WLED is reachable. When the Jetson joins the

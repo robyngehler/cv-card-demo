@@ -97,6 +97,7 @@ export function initRunView(store) {
         : typeof q.question_count === "number"
         ? q.question_count
         : 0;
+    const isReturningVisitor = live.is_returning_visitor || false;
     const countdownRemaining =
       typeof live.countdown_remaining_s === "number"
         ? live.countdown_remaining_s
@@ -104,7 +105,7 @@ export function initRunView(store) {
         ? q.countdown_remaining_s
         : null;
     const questionText = live.question_label || q.question_label || "";
-    const sessionName = q.session_name || q.name || q.identity?.name || "";
+    const sessionName = q.candidate_name || q.session_name || q.name || q.identity?.name || live.candidate_name || "";
     const sessionMail = q.session_mail || q.email || q.identity?.email || "";
 
     // Determine which left panel to show.
@@ -126,7 +127,9 @@ export function initRunView(store) {
 
     let activePanel = "idle";
     if (!isBooting) {
-      if (completed) {
+      if (isReturningVisitor) {
+        activePanel = "thanks";
+      } else if (completed) {
         activePanel = "thanks";
       } else if (phase === "GREETING") {
         activePanel = "greet";

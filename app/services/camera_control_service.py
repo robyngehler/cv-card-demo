@@ -40,6 +40,10 @@ class CameraControlService:
     def __init__(self, context):
         self.context = context
         self.last_error: str | None = None
+        # Optional per-control slider bounds from config (camera.controls.<key>).
+        # The V4L2 driver advertises a far wider exposure range than is usable,
+        # so the booth operator can cap it here for a meaningful slider.
+        self.control_overrides = (context.config.get("camera", {}) or {}).get("controls", {}) or {}
 
     def get_status(self) -> Dict[str, Any]:
         camera = self.context.get_service("camera", default=None)
@@ -108,6 +112,14 @@ class CameraControlService:
         rejected: Dict[str, str] = {}
         backend = self._backend_name(camera)
 
+        # Properties the caller explicitly wants left in auto mode this request.
+        # We must not force those back to manual when their value is also sent.
+        explicit_auto_on = {
+            self.AUTO_KEY_MAP[k]
+            for k, v in (updates or {}).items()
+            if k in self.AUTO_KEY_MAP and bool(v)
+        }
+
         for key, value in (updates or {}).items():
             if key in self.AUTO_KEY_MAP:
                 prop_key = self.AUTO_KEY_MAP[key]
@@ -119,11 +131,18 @@ class CameraControlService:
                 if auto_prop_id is None:
                     rejected[key] = "unsupported"
                     continue
-                ok = self._set_property(
-                    camera,
-                    auto_prop_id,
-                    self._encode_auto_value(prop_key, bool(value), backend=backend),
-                )
+
+                # Try the primary encoding first, then fallback values for cameras with quirky drivers
+                primary_value = self._encode_auto_value(prop_key, bool(value), backend=backend)
+                fallback_values = self._get_auto_value_fallbacks(prop_key, bool(value), backend=backend)
+
+                ok = self._set_property(camera, auto_prop_id, primary_value)
+                if not ok and fallback_values:
+                    for fb_value in fallback_values:
+                        ok = self._set_property(camera, auto_prop_id, fb_value)
+                        if ok:
+                            break
+
                 applied[key] = bool(ok)
                 if not ok:
                     rejected[key] = "set_failed"
@@ -144,6 +163,13 @@ class CameraControlService:
             except Exception:
                 rejected[key] = "invalid_value"
                 continue
+
+            # A manual value only takes effect when the matching auto-mode is OFF.
+            # V4L2 silently ignores CAP_PROP_EXPOSURE while auto-exposure is active,
+            # so switch the property to manual before writing the value (unless the
+            # caller explicitly asked to keep auto on in the same request).
+            if spec.supports_auto and spec.auto_prop and key not in explicit_auto_on:
+                self._force_manual_mode(camera, cv2, spec, backend)
 
             supported, current_value = self._read_property(camera, prop_id)
             min_value, max_value = self._effective_range(spec, current_value if supported else numeric, backend)
@@ -244,6 +270,21 @@ class CameraControlService:
             self.last_error = str(exc)
             return False
 
+    def _force_manual_mode(self, camera, cv2, spec: CameraPropertySpec, backend: str) -> None:
+        """Switch an auto-capable property (e.g. exposure) to manual so a written
+        value is honoured. Tries the primary encoding, then driver fallbacks."""
+        if not (spec.supports_auto and spec.auto_prop):
+            return
+        auto_prop_id = getattr(cv2, spec.auto_prop, None)
+        if auto_prop_id is None:
+            return
+        primary = self._encode_auto_value(spec.key, False, backend=backend)
+        if self._set_property(camera, auto_prop_id, primary):
+            return
+        for fallback in self._get_auto_value_fallbacks(spec.key, False, backend=backend):
+            if self._set_property(camera, auto_prop_id, fallback):
+                return
+
     def _spec_by_key(self, key: str) -> CameraPropertySpec | None:
         for spec in self.PROPERTY_SPECS:
             if spec.key == key:
@@ -287,6 +328,14 @@ class CameraControlService:
                 min_value = 1.0
                 max_value = max(max_value, 4095.0)
 
+        # Config overrides win over the driver-reported / dynamic range so the UI
+        # slider stays within a usable band (e.g. exposure 0..255 instead of 4095).
+        override = self.control_overrides.get(spec.key) or {}
+        if "min" in override:
+            min_value = float(override["min"])
+        if "max" in override:
+            max_value = float(override["max"])
+
         if min_value > max_value:
             min_value, max_value = max_value, min_value
 
@@ -317,3 +366,17 @@ class CameraControlService:
             # CAP_PROP_AUTO_EXPOSURE is backend-specific; 1.0/0.0 is a common fallback.
             return 1.0 if enabled else 0.0
         return 1.0 if enabled else 0.0
+
+    def _get_auto_value_fallbacks(self, key: str, enabled: bool, backend: str = "opencv") -> list:
+        """
+        Get fallback values for auto properties when primary encoding fails.
+        Some camera drivers have quirky auto-property support.
+        """
+        if key == "exposure":
+            if enabled:
+                # Try common "auto" values when primary fails
+                return [1.0, 0.75, 3.0, 0.5]
+            else:
+                # Try common "manual" values
+                return [0.0, 0.25, 0.1]
+        return [1.0, 0.0]

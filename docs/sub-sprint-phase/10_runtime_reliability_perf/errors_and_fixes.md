@@ -1,5 +1,36 @@
 # Phase 10 — Reliability/Perf/systemd: Errors & Fixes
 
+## 2026-06-11 — PaddleOCR segfault + unusable exposure slider
+
+- **Observed (OCR):** backend crashed with `FatalError: Segmentation fault`
+  (`SIGSEGV`, no paddle stack trace) during a run, after the OCR models had
+  downloaded and while live frames were being served.
+- **Root cause:** PaddlePaddle predictors are not thread-safe. The single `ocr`
+  service instance is hit from two threads — the state-machine thread via
+  `CandidatePrecheckService` (CANDIDATE_DETECTED) and a per-snapshot daemon
+  thread via `SnapshotProcessingService`. Concurrent `.ocr()` calls on the same
+  predictor segfault the C++ runtime.
+- **Fix:** added a `threading.Lock` in `PaddleOcrService` and serialized every
+  `self.backend.ocr(...)` call through it. (paddlepaddle 3.2.2 here is the CPU
+  build, so there is no GPU/CUDA-context conflict with YOLO.)
+- **Verification:** single-threaded smoke test extracts text from a card crop;
+  a 4-thread × 3-iteration concurrent test on one shared service now completes
+  with no errors and no segfault.
+
+- **Observed (exposure):** runtime exposure slider ranged 0..~4095 while only the
+  low band (~0..200) is usable, so no meaningful setting could be dialled in; a
+  prior note claimed manual exposure was impossible on this camera.
+- **Root cause:** `_effective_range` expanded the V4L2 exposure max to 4095, and
+  a manual `CAP_PROP_EXPOSURE` write is silently ignored by V4L2 while
+  auto-exposure is still active — so the value never "took".
+- **Fix:** (1) optional `camera.controls.<key>.{min,max}` config overrides the
+  slider bounds (default exposure 0..255); (2) writing a manual value for an
+  auto-capable property now switches it to manual first
+  (`CAP_PROP_AUTO_EXPOSURE` → 0.25 on V4L2, i.e. `exposure_auto=1`) before the
+  value is written, unless the same request explicitly keeps auto on.
+- **Verification:** fake-capture test confirms the slider caps at 255 and that
+  `apply_settings({'exposure':40})` issues AUTO(manual)→EXPOSURE in that order.
+
 ## 2026-06-10 — No detection ever (stuck in IDLE_NO_CARD) + jerky live view
 
 - **Observed:** after the CUDA/LD_LIBRARY_PATH fix, no detection/tracking/snapshot

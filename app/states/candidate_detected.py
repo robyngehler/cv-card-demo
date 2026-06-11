@@ -169,6 +169,10 @@ class CandidateDetectedState:
                 if candidate_id is None and identity is not None:
                     candidate_id = identity.create_temporary_candidate_id()
 
+                persistence = self.context.get_service("persistence", default=None)
+                candidate_name = None
+                is_returning_visitor = False
+
                 if questionnaire is not None:
                     session = questionnaire.ensure_session(
                         candidate_id=candidate_id,
@@ -179,8 +183,25 @@ class CandidateDetectedState:
                     session["card_identity_state"] = identity_status
                     session["identity_status"] = identity_status
 
+                # Check if candidate is known and has already completed survey
+                if persistence is not None and candidate_id is not None:
+                    candidate = persistence.find_candidate(candidate_id)
+                    if candidate is not None:
+                        candidate_name = candidate.get("name")
+                        # Check if this candidate has a completed session
+                        completed_session = persistence.sessions.get_candidate_session_progress(candidate_id)
+                        if completed_session is None:
+                            # No incomplete session = already completed (or first-time visitor)
+                            # We check by looking at the identity_status: if MATCHED, they're known
+                            if "MATCHED" in identity_status:
+                                is_returning_visitor = True
+
                 self.context.runtime["substate"] = "START_OR_RESUME_SESSION"
                 if ui_service is not None:
+                    message = f"Willkommen, {candidate_name}!" if candidate_name else ("Welcome back" if precheck_result and precheck_result.resolved else "New visitor")
+                    if is_returning_visitor:
+                        message = f"Mach's gut, {candidate_name}! Danke fürs Mitmachen!" if candidate_name else "Danke fürs Mitmachen!"
+
                     ui_service.publish_score(
                         {
                             "visible": True,
@@ -193,10 +214,22 @@ class CandidateDetectedState:
                             "fusion_state": "IDENTITY_PRECHECK",
                             "source": "card_crop_ocr",
                             "candidate_id": candidate_id,
+                            "candidate_name": candidate_name,
                             "identity_status": identity_status,
-                            "message": "Welcome back" if precheck_result and precheck_result.resolved else "New visitor",
+                            "message": message,
+                            "is_returning_visitor": is_returning_visitor,
                         }
                     )
+
+                # If returning visitor who already voted, skip to idle with thank you message
+                if is_returning_visitor:
+                    if self.context.logger:
+                        self.context.logger.info(
+                            f"CANDIDATE_DETECTED: Known visitor {candidate_id} ({candidate_name}) detected, "
+                            f"skipping survey (already completed)"
+                        )
+                    return "IDLE_NO_CARD"
+
                 if self.context.logger:
                     self.context.logger.info(
                         f"CANDIDATE_DETECTED: Business card confirmed stable after {self.stable_frame_count} frames, "
