@@ -710,3 +710,50 @@
 2026-06-10 17:46:39,105 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
 2026-06-10 17:46:44,407 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
 2026-06-10 17:46:49,709 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-10 17:46:55,008 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:34:35,869 INFO cv-card-demo Starting state machine in BOOT
+2026-06-11 09:34:35,869 INFO cv-card-demo STATE_TRANSITION old_state=None new_state=BOOT reason=enter
+2026-06-11 09:34:35,869 INFO cv-card-demo Entering BOOT state
+2026-06-11 09:34:35,871 INFO cv-card-demo UI service started on http://0.0.0.0:8000
+2026-06-11 09:34:35,872 INFO cv-card-demo BOOT complete, transitioning to INIT_CAM
+2026-06-11 09:34:35,872 INFO cv-card-demo Exiting BOOT state
+2026-06-11 09:34:35,872 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=INIT_CAM reason=complete
+2026-06-11 09:34:35,872 INFO cv-card-demo STATE_TRANSITION old_state=BOOT new_state=INIT_CAM reason=enter
+2026-06-11 09:34:35,872 INFO cv-card-demo Entering INIT_CAM state
+2026-06-11 09:34:35,872 INFO cv-card-demo Checking OpenCV availability
+2026-06-11 09:34:35,873 INFO cv-card-demo OpenCV available: version=4.11.0
+2026-06-11 09:34:35,873 INFO cv-card-demo Camera initialization attempt 1/3
+2026-06-11 09:34:35,873 INFO cv-card-demo Opening camera device 0 requested=4096x2160@30.0 fourcc=MJPG
+2026-06-11 09:34:37,096 INFO cv-card-demo Camera configured requested=4096x2160@30.0 fourcc=MJPG actual=4096x2160@30.0 fourcc=MJPG first_frame_shape=(2160, 4096, 3)
+2026-06-11 09:34:37,223 INFO cv-card-demo Camera frame received shape=(2160, 4096, 3) cv2=4.11.0
+2026-06-11 09:34:37,223 INFO cv-card-demo Exiting INIT_CAM state
+2026-06-11 09:34:37,223 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=CALIBRATION reason=complete
+2026-06-11 09:34:37,224 INFO cv-card-demo STATE_TRANSITION old_state=INIT_CAM new_state=CALIBRATION reason=enter
+2026-06-11 09:34:37,224 INFO cv-card-demo Entering CALIBRATION state
+2026-06-11 09:34:37,379 INFO cv-card-demo Workspace ready status=OK card=664x423 hand=731x493
+2026-06-11 09:34:37,379 INFO cv-card-demo Exiting CALIBRATION state
+2026-06-11 09:34:37,379 INFO cv-card-demo STATE_TRANSITION old_state=CALIBRATION new_state=IDLE_NO_CARD reason=complete
+2026-06-11 09:34:37,379 INFO cv-card-demo STATE_TRANSITION old_state=CALIBRATION new_state=IDLE_NO_CARD reason=enter
+2026-06-11 09:34:37,379 INFO cv-card-demo Entering IDLE_NO_CARD state
+2026-06-11 09:34:37,379 INFO cv-card-demo System is idle and waiting for a card
+2026-06-11 09:35:37,398 INFO cv-card-demo PERF UI ui_snapshot_build[n=1 p50=0 p95=0 max=0] ui_snapshot_json[n=1 p50=0 p95=0 max=0]
+2026-06-11 09:35:42,708 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:35:48,008 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:35:53,313 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:35:58,617 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:03,921 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:09,224 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:14,526 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:19,825 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:25,130 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:30,437 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:35,744 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:41,048 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:46,350 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=1] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:51,656 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:36:56,957 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:37:02,261 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:37:07,568 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:37:12,871 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:37:18,173 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]
+2026-06-11 09:37:23,475 INFO cv-card-demo PERF UI ui_snapshot_build[n=16 p50=0 p95=0 max=0] ui_snapshot_json[n=16 p50=0 p95=0 max=0]

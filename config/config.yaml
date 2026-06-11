@@ -68,7 +68,11 @@ detector:
     SNAPSHOT: 0
 
   yolo:
-    model_path: "./models/yolov8n.pt"
+    # Available models:
+    # - "./models/yolov8n.pt"              (stock COCO, no business_card class)
+    # - "./models/yolov8_visiting_card.pt" (trained on visiting cards, has "visiting_card" label)
+    # - "./models/YOLO-id-card.pt"         (trained on ID cards, only 2 classes: with/without strap)
+    model_path: "./models/yolov8_visiting_card.pt"
     confidence: 0.25
     fallback_to_classical: true
     device: "auto"   # auto -> cuda:0 when available, else cpu (or set "cpu"/"cuda:0")
@@ -95,8 +99,11 @@ detector:
 
   confidence:
     min_confidence: 0.45
-    expected_card_area_px: 6500
-    min_area_similarity: 0.22
+    # Workspace is 664x423 on the live frame. A ~90x50mm business card at
+    # ~300mm workspace width scales to ~200x70px ≈ 14000 px² in workspace.
+    # Min/max tolerance +/- 50% area variance (e.g. angle, distance).
+    expected_card_area_px: 14000
+    min_area_similarity: 0.15
     target_aspect_ratio: 1.65
     aspect_tolerance: 0.55
     weight_area: 0.35

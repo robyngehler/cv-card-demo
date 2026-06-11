@@ -73,9 +73,19 @@ class YoloCardDetector:
         candidates: list[CardPose] = []
         frame_height = int(workspace_frame.shape[0])
         frame_width = int(workspace_frame.shape[1])
+
+        # Label aliases: models may use different names for business cards
+        label_aliases = {
+            "visiting_card": self.business_card_label,
+            "business_card": self.business_card_label,
+            "card": self.business_card_label,
+        }
+
         for box in boxes:
             class_id = int(box.cls[0]) if getattr(box, "cls", None) is not None else -1
-            label = names.get(class_id)
+            raw_label = names.get(class_id)
+            # Map raw model label to canonical business_card label if possible
+            label = label_aliases.get(raw_label, raw_label)
             if label != self.business_card_label:
                 continue
 
@@ -155,20 +165,22 @@ class YoloCardDetector:
         try:
             self.model = yolo_class(model_path)
 
-            # A model without the configured card class (e.g. stock COCO
-            # weights) would load fine but never produce a candidate. Treat it
-            # as unavailable so CardDetectorService falls back to classical
-            # with a visible warning instead of failing silently.
+            # A model without a card class would load fine but never produce a
+            # candidate. Accept the configured label OR known aliases (e.g.
+            # "visiting_card" for a model trained on business cards).
             model_labels = {str(name) for name in (getattr(self.model, "names", {}) or {}).values()}
-            if model_labels and self.business_card_label not in model_labels:
+            accepted_labels = {self.business_card_label, "visiting_card", "card", "id"}
+            has_card_class = bool(model_labels & accepted_labels)
+
+            if model_labels and not has_card_class:
                 self.model = None
                 self.status = {
                     "status": "ERROR",
                     "detector": self.detector_name,
                     "model_path": model_path,
                     "last_error": (
-                        f"model has no class '{self.business_card_label}' "
-                        f"(model classes: {sorted(model_labels)[:5]}... total={len(model_labels)})"
+                        f"model has no card-like class (looked for: {sorted(accepted_labels)}; "
+                        f"found: {sorted(model_labels)[:5]}... total={len(model_labels)})"
                     ),
                 }
                 if self.context.logger is not None:
