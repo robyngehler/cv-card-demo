@@ -272,8 +272,8 @@ wled:
   # Leave disabled until the ESP32/WLED is reachable. When the Jetson joins the
   # ESP's own WLED access point ("WLED-AP"), WLED's AP default address is
   # http://4.3.2.1 — set host accordingly.
-  enabled: false
-  host: ""                 # e.g. "http://4.3.2.1" (ESP AP) or "http://192.168.4.50"
+  enabled: true
+  host: "http://4.3.2.1"                 # e.g. "http://4.3.2.1" (ESP AP) or "http://192.168.4.50"
   endpoint: "/json/state"
   led_count: 15            # LEDs in the score segment
   brightness: 160

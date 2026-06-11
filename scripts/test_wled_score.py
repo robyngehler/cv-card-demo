@@ -37,6 +37,7 @@ def main() -> int:
     parser.add_argument("--score", type=float, default=None, help="0.0 .. 1.0")
     parser.add_argument("--idle", action="store_true", help="send idle/off payload")
     parser.add_argument("--host", default=None, help="override wled.host (e.g. http://4.3.2.1)")
+    parser.add_argument("--retries", type=int, default=2, help="retry attempts on timeout")
     args = parser.parse_args()
 
     if args.score is None and not args.idle:
@@ -65,11 +66,18 @@ def main() -> int:
         color = service.score_to_color(score)
         print(f"Sending score={score} -> active_leds={active} color={color} to {service.client.host}")
 
-    ok = service.client.post_state(payload)
-    if ok:
-        print("OK: WLED accepted the update")
-        return 0
-    print(f"FAILED: {service.client.last_error}")
+    ok = False
+    for attempt in range(args.retries):
+        ok = service.client.post_state(payload)
+        if ok:
+            print("OK: WLED accepted the update")
+            return 0
+        if attempt < args.retries - 1:
+            import time
+            print(f"Retry {attempt + 1}/{args.retries - 1} (timeout: {service.client.last_error})")
+            time.sleep(0.5)
+
+    print(f"FAILED after {args.retries} attempts: {service.client.last_error}")
     return 1
 
 

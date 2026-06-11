@@ -143,6 +143,11 @@ class WledOutputService:
         return (active_start, active_stop)
 
     def build_payload(self, score: Optional[float], idle: bool) -> Dict[str, Any]:
+        """Build WLED /json/state payload.
+
+        Always updates the entire segment range to ensure inactive LEDs are properly
+        cleared (prevents color bleed when transitioning from high to low fill).
+        """
         if idle or score is None:
             seg = [{"id": self.segment_id, "start": self.start_led, "stop": self.stop_led, "col": [[0, 0, 0]], "fx": 0}]
             return {
@@ -150,20 +155,22 @@ class WledOutputService:
                 "bri": self.idle_brightness,
                 "seg": seg,
             }
+
         active = self.score_to_led_count(score)
         color: List[int] = list(self.score_to_color(score))
+        seg = []
 
         if active <= 0:
-            seg = [{"id": self.segment_id, "start": self.start_led, "stop": self.stop_led, "col": [[0, 0, 0]], "fx": 0}]
+            seg.append({"id": self.segment_id, "start": self.start_led, "stop": self.stop_led, "col": [[0, 0, 0]], "fx": 0})
         elif active >= self.led_count:
-            seg = [{"id": self.segment_id, "start": self.start_led, "stop": self.stop_led, "col": [color], "fx": 0}]
+            seg.append({"id": self.segment_id, "start": self.start_led, "stop": self.stop_led, "col": [color], "fx": 0})
         else:
             active_start, active_stop = self._calculate_active_range(active)
-            seg = [{"id": self.segment_id, "start": active_start, "stop": active_stop, "col": [color], "fx": 0}]
+            seg.append({"id": self.segment_id, "start": active_start, "stop": active_stop, "col": [color], "fx": 0})
             if active_start > self.start_led:
-                seg.append({"id": 31, "start": self.start_led, "stop": active_start, "col": [[0, 0, 0]], "fx": 0})
+                seg.append({"id": self.segment_id + 1, "start": self.start_led, "stop": active_start, "col": [[0, 0, 0]], "fx": 0})
             if active_stop < self.stop_led:
-                seg.append({"id": 30, "start": active_stop, "stop": self.stop_led, "col": [[0, 0, 0]], "fx": 0})
+                seg.append({"id": self.segment_id + 2, "start": active_stop, "stop": self.stop_led, "col": [[0, 0, 0]], "fx": 0})
 
         return {"on": True, "bri": self.brightness, "seg": seg}
 
