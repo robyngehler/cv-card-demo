@@ -481,8 +481,11 @@ class UIService:
         live_ts = runtime.get("last_live_frame_jpeg_ts") or 0.0
 
         if mode_upper == "RUN":
-            # Visitor-facing view: always the clean camera frame. CV overlays
-            # (boxes / landmarks / debug text) belong in Configure / Diagnostics.
+            # Run view: prefer the debug overlay (card bbox + hand keypoints)
+            # when it is fresh — this makes the demo effect visible to the visitor.
+            # Fall back to the clean live frame when no overlay exists yet (idle).
+            if debug_bytes and debug_ts >= live_ts - 0.5:
+                return debug_bytes, frame_ts
             if live_bytes:
                 return live_bytes, frame_ts
             if debug_bytes:

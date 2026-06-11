@@ -43,10 +43,23 @@ class YoloCardDetector:
                 source=workspace_frame, verbose=False, conf=conf_threshold, device=self.device
             )
         except Exception as exc:
+            err = str(exc)
+            # CUDA/cuDNN initialisation errors are permanent for this process —
+            # mark the model unavailable so CardDetectorService falls back to
+            # classical instead of hitting the same error every frame.
+            if any(tag in err for tag in ("cuDNN", "CUBLAS", "CUDA error", "CUDNN_STATUS")):
+                self.available = False
+                self.status["status"] = "UNAVAILABLE"
+                self.status["last_error"] = f"GPU init failed (falling back to classical): {err[:120]}"
+                if self.context.logger is not None:
+                    self.context.logger.warning(
+                        f"YOLO detector disabled due to GPU error — classical fallback active. "
+                        f"error={err[:120]}"
+                    )
             return CardDetectionResult(
                 visible=False,
                 status="ERROR",
-                error=str(exc),
+                error=err,
                 detector_type=self.detector_name,
                 primary_label=self.business_card_label,
             )
@@ -169,7 +182,7 @@ class YoloCardDetector:
             # candidate. Accept the configured label OR known aliases (e.g.
             # "visiting_card" for a model trained on business cards).
             model_labels = {str(name) for name in (getattr(self.model, "names", {}) or {}).values()}
-            accepted_labels = {self.business_card_label, "visiting_card", "card", "id"}
+            accepted_labels = {self.business_card_label, "visiting_card", "card", "id", "with_id_strap", "without_id_strap"}
             has_card_class = bool(model_labels & accepted_labels)
 
             if model_labels and not has_card_class:

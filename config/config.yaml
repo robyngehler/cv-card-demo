@@ -92,18 +92,22 @@ detector:
     max_area_ratio: 0.8
     min_aspect_ratio: 1.2
     max_aspect_ratio: 2.2
-    min_rectangularity: 0.76
-    min_solidity: 0.90
+    # Relaxed from 0.76 / 0.90: without a hand the card surface has low
+    # contrast and slight perspective distortion reduces apparent regularity.
+    min_rectangularity: 0.68
+    min_solidity: 0.82
     require_quadrilateral: true
-    border_margin_px: 10
+    # Increased from 10: card near workspace edge was rejected by border check.
+    border_margin_px: 4
 
   confidence:
-    min_confidence: 0.45
+    # Relaxed from 0.45: card alone (no hand) produces lower raw confidence.
+    min_confidence: 0.32
     # Workspace is 664x423 on the live frame. A ~90x50mm business card at
     # ~300mm workspace width scales to ~200x70px ≈ 14000 px² in workspace.
-    # Min/max tolerance +/- 50% area variance (e.g. angle, distance).
+    # Min/max tolerance +/- 60% area variance (angle, distance, card type).
     expected_card_area_px: 14000
-    min_area_similarity: 0.15
+    min_area_similarity: 0.08
     target_aspect_ratio: 1.65
     aspect_tolerance: 0.55
     weight_area: 0.35

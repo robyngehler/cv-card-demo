@@ -270,13 +270,10 @@ export function initConfigureView(store) {
       }
     });
 
-    const settings = data.settings || {};
-    Object.keys(AUTO_TOGGLE_MAP).forEach((key) => {
-      const autoKey = AUTO_TOGGLE_MAP[key];
-      if (settings[key] && typeof settings[key].auto === "boolean") {
-        controlsState.autoDraftValues[autoKey] = Boolean(settings[key].auto);
-      }
-    });
+    // Do NOT update autoDraftValues from the settings readback here.
+    // V4L2 cameras often report the old auto value immediately after set, so
+    // reading back would overwrite what the user just toggled.  loadControls()
+    // below preserves the current draft via previousAutoDraftValues.
 
     await loadControls();
   }
