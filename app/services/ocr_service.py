@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import multiprocessing as mp
-import os
-import queue as stdlib_queue
 import re
 import threading
-import time
 from typing import Any, Dict, List, Optional
 
 
@@ -17,160 +13,58 @@ def _field(value: Optional[str], confidence: float, source: str) -> Dict[str, An
     }
 
 
-def _ocr_worker_main(request_q: Any, response_q: Any) -> None:
-    """Entry point for the dedicated OCR subprocess.
+class RapidOcrService:
+    """OCR backend using rapidocr-onnxruntime.
 
-    Paddle predictors are NOT thread-safe and their C++ runtime can segfault
-    when shared with other ML frameworks (MediaPipe/TFLite XNNPACK) in the same
-    process. Running OCR in a dedicated subprocess completely isolates Paddle: a
-    crash only kills this worker — the parent process survives and restarts it.
-
-    GPU path: change device='cpu' to device='gpu:0' once paddlepaddle-gpu is
-    available for aarch64/JetPack. YOLO and Paddle can share the Jetson GPU
-    because the CUDA driver serializes device access across processes.
+    ONNX Runtime inference sessions are thread-safe, but we still guard the
+    engine with a lock because RapidOCR wraps three separate sessions (det,
+    cls, rec) behind a single Python object — concurrent calls would interleave
+    internal state.  A single lock is sufficient because OCR is called at most
+    once per card scan (event-driven, not per-frame).
     """
-    # Must be set before importing paddle — disables Intel MKL-DNN on ARM
-    # (MKL-DNN assumes x86 ISA features and causes null-pointer crashes on ARM64)
-    os.environ.setdefault("FLAGS_use_mkldnn", "0")
-    os.environ.setdefault("FLAGS_call_stack_level", "2")
 
-    try:
-        from paddleocr import PaddleOCR
-
-        ocr = PaddleOCR(
-            lang="en",
-            enable_mkldnn=False,
-            cpu_threads=4,
-            device="cpu",
-            # Doc-orientation and unwarping are not needed for already-cropped
-            # card images viewed top-down; skip them to save two model loads.
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-        )
-        response_q.put({"type": "ready"})
-    except Exception as exc:
-        response_q.put({"type": "init_error", "error": str(exc)})
-        return
-
-    while True:
-        try:
-            req = request_q.get(timeout=10.0)
-        except stdlib_queue.Empty:
-            continue
-        if req.get("cmd") == "shutdown":
-            break
-        req_id = req["id"]
-        try:
-            results = ocr.ocr(req["image_path"])
-            # PaddleOCR 3.x returns OCRResult objects containing weak-method
-            # references that cannot be pickled. Extract plain strings here.
-            lines: list[str] = []
-            for page in results or []:
-                if isinstance(page, dict) and "rec_texts" in page:
-                    for text, _ in zip(
-                        page.get("rec_texts") or [],
-                        page.get("rec_scores") or [],
-                    ):
-                        t = str(text).strip() if text else ""
-                        if t:
-                            lines.append(t)
-                else:
-                    for detection in page or []:
-                        if len(detection) >= 2:
-                            t = str(detection[1][0]).strip()
-                            if t:
-                                lines.append(t)
-            response_q.put({"id": req_id, "lines": lines, "error": None})
-        except Exception as exc:
-            response_q.put({"id": req_id, "lines": [], "error": str(exc)})
-
-
-class PaddleOcrService:
     def __init__(self, context):
         self.context = context
         self.status: Dict[str, Any] = {"status": "NOT_INITIALIZED"}
-        # Serialize subprocess requests so only one OCR call is in-flight at a
-        # time. The subprocess is single-threaded, so no request-ID matching
-        # is needed — responses always correspond to the pending request.
         self._lock = threading.Lock()
-        self._worker: Optional[mp.Process] = None
-        self._request_q: Optional[Any] = None
-        self._response_q: Optional[Any] = None
-        self._req_counter = 0
-        self._start_worker(init_timeout=120.0)
+        self._engine = None
+        self._load_backend()
 
-    def _start_worker(self, init_timeout: float = 30.0) -> None:
-        if self._worker and self._worker.is_alive():
-            try:
-                self._worker.terminate()
-                self._worker.join(timeout=3)
-            except Exception:
-                pass
-
-        # spawn = fresh Python interpreter — no inherited CUDA context, no
-        # inherited MediaPipe/TFLite state, no NEON-library conflicts.
-        ctx = mp.get_context("spawn")
-        self._request_q = ctx.Queue()
-        self._response_q = ctx.Queue()
-        self._worker = ctx.Process(
-            target=_ocr_worker_main,
-            args=(self._request_q, self._response_q),
-            daemon=True,
-            name="ocr-worker",
-        )
-        self._worker.start()
+    def _load_backend(self) -> None:
         try:
-            msg = self._response_q.get(timeout=init_timeout)
-        except stdlib_queue.Empty:
-            self.status = {"status": "UNAVAILABLE", "last_error": "worker init timeout"}
-            return
-        if msg.get("type") == "init_error":
-            self.status = {"status": "UNAVAILABLE", "last_error": msg.get("error", "init failed")}
-        else:
+            from rapidocr_onnxruntime import RapidOCR  # type: ignore
+            self._engine = RapidOCR()
             self.status = {"status": "READY"}
+        except Exception as exc:
+            self._engine = None
+            self.status = {"status": "UNAVAILABLE", "last_error": str(exc)}
 
     def extract_text(self, image_path: str) -> Dict[str, Any]:
-        if self.status.get("status") != "READY":
+        if self._engine is None:
             return {"status": self.status.get("status", "UNAVAILABLE"), "raw_text": "", "lines": []}
 
-        with self._lock:
-            if not self._worker.is_alive():
-                self._start_worker(init_timeout=30.0)
-                if self.status.get("status") != "READY":
-                    return {"status": "UNAVAILABLE", "raw_text": "", "lines": []}
+        try:
+            with self._lock:
+                result, _elapse = self._engine(image_path)
+        except Exception as exc:
+            return {"status": "ERROR", "raw_text": "", "lines": [], "error": str(exc)}
 
-            req_id = self._req_counter
-            self._req_counter += 1
-            self._request_q.put({"id": req_id, "image_path": image_path})
+        lines: List[str] = []
+        for detection in result or []:
+            if len(detection) >= 2:
+                text = str(detection[1]).strip()
+                if text:
+                    lines.append(text)
 
-            # Poll with worker-alive check so we don't wait the full 30s if
-            # the subprocess segfaults during inference.
-            deadline = time.monotonic() + 30.0
-            response = None
-            while time.monotonic() < deadline:
-                if not self._worker.is_alive():
-                    break
-                try:
-                    response = self._response_q.get(timeout=1.0)
-                    break
-                except stdlib_queue.Empty:
-                    continue
+        raw_text = "\n".join(lines)
+        return {"status": "OK", "raw_text": raw_text, "lines": lines}
 
-        if response is None:
-            return {"status": "ERROR", "raw_text": "", "lines": [], "error": "worker crash or timeout"}
-        if response.get("error"):
-            return {"status": "ERROR", "raw_text": "", "lines": [], "error": response["error"]}
-        lines = response.get("lines") or []
-        return {"status": "OK", "raw_text": "\n".join(lines), "lines": lines}
+    def get_status(self) -> Dict[str, Any]:
+        return {"status": self.status.get("status", "UNKNOWN"), "backend": "rapidocr"}
 
-    def shutdown(self) -> None:
-        if self._worker and self._worker.is_alive():
-            try:
-                self._request_q.put({"cmd": "shutdown"})
-                self._worker.join(timeout=5)
-            finally:
-                if self._worker.is_alive():
-                    self._worker.terminate()
+
+# Keep alias so imports that reference PaddleOcrService still resolve.
+PaddleOcrService = RapidOcrService
 
 
 class RegexFieldExtractor:
@@ -199,15 +93,8 @@ class RegexFieldExtractor:
 
 class HeuristicFieldExtractor:
     ROLE_KEYWORDS = (
-        "engineer",
-        "manager",
-        "lead",
-        "researcher",
-        "professor",
-        "ceo",
-        "cto",
-        "director",
-        "consultant",
+        "engineer", "manager", "lead", "researcher", "professor",
+        "ceo", "cto", "director", "consultant",
     )
 
     def extract(self, lines: List[str], deterministic_fields: Dict[str, Any]) -> Dict[str, Any]:
@@ -220,18 +107,18 @@ class HeuristicFieldExtractor:
         semantic_lines = [line for line in filtered_lines if line not in deterministic_values]
 
         role = next(
-            (line for line in semantic_lines if any(keyword in line.lower() for keyword in self.ROLE_KEYWORDS)),
+            (line for line in semantic_lines if any(kw in line.lower() for kw in self.ROLE_KEYWORDS)),
             None,
         )
         company = self._select_company(semantic_lines, role)
         name = None
         for line in semantic_lines:
-            words = [word for word in re.split(r"\s+", line) if word]
+            words = [w for w in re.split(r"\s+", line) if w]
             if (
                 len(words) in {2, 3}
-                and not any(char.isdigit() for char in line)
-                and not any(keyword in line.lower() for keyword in self.ROLE_KEYWORDS)
-                and not any(token.isupper() and len(token) > 3 for token in words)
+                and not any(c.isdigit() for c in line)
+                and not any(kw in line.lower() for kw in self.ROLE_KEYWORDS)
+                and not any(t.isupper() and len(t) > 3 for t in words)
             ):
                 name = line
                 break
@@ -246,16 +133,16 @@ class HeuristicFieldExtractor:
         if not semantic_lines:
             return None
         if role and role in semantic_lines:
-            role_index = semantic_lines.index(role)
+            idx = semantic_lines.index(role)
             neighbors = []
-            if role_index > 0:
-                neighbors.append(semantic_lines[role_index - 1])
-            if role_index + 1 < len(semantic_lines):
-                neighbors.append(semantic_lines[role_index + 1])
-            for neighbor in neighbors:
-                if neighbor != role:
-                    return neighbor
-        ranked = sorted(semantic_lines, key=lambda line: (-len(line), line.lower()))
+            if idx > 0:
+                neighbors.append(semantic_lines[idx - 1])
+            if idx + 1 < len(semantic_lines):
+                neighbors.append(semantic_lines[idx + 1])
+            for n in neighbors:
+                if n != role:
+                    return n
+        ranked = sorted(semantic_lines, key=lambda l: (-len(l), l.lower()))
         for candidate in ranked:
             if candidate != role:
                 return candidate
@@ -302,7 +189,7 @@ class BusinessCardMetadataPipeline:
 
     def __init__(self, context):
         self.context = context
-        self.ocr = PaddleOcrService(context)
+        self.ocr = RapidOcrService(context)
         self.regex = RegexFieldExtractor()
         self.heuristics = HeuristicFieldExtractor()
         self.parser = StructuredFieldParser(context)
@@ -333,13 +220,10 @@ class BusinessCardMetadataPipeline:
         }
 
     def get_status(self) -> Dict[str, Any]:
-        return {
-            "status": self.ocr.status.get("status", "UNKNOWN"),
-            "backend": "paddleocr",
-        }
+        return self.ocr.get_status()
 
     def shutdown(self) -> None:
-        self.ocr.shutdown()
+        pass  # no subprocess to clean up
 
 
 LlmBusinessCardParser = StructuredFieldParser

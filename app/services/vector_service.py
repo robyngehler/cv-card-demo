@@ -3,10 +3,19 @@ from __future__ import annotations
 import hashlib
 import importlib
 import math
+import threading
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+
+# Fixed namespace for deterministic UUID5 point IDs.
+# Qdrant local mode requires PointStruct objects with UUID or uint64 IDs.
+# uuid5(QDRANT_NS, candidate_id) is stable across restarts: upserting the same
+# candidate always targets the same point (idempotent), and the original
+# candidate_id remains queryable via payload filter.
+_QDRANT_NS = uuid.UUID("00000000-0000-0000-0000-00000000c0de")
 
 
 class TextEmbeddingService:
@@ -115,21 +124,26 @@ class QdrantVectorStore:
             "candidate_text_embeddings": {},
             "candidate_image_embeddings": {},
         }
+        # Qdrant local mode is not thread-safe; serialise all client calls.
+        self._lock = threading.Lock()
         self._load_client()
 
     def upsert(self, *, collection: str, point_id: str, vector: list[float], payload: Dict[str, Any]) -> None:
         if self.client is not None:
-            self._ensure_qdrant_collection(collection, len(vector))
-            self.client.upsert(
-                collection_name=collection,
-                points=[
-                    {
-                        "id": point_id,
-                        "vector": vector,
-                        "payload": payload,
-                    }
-                ],
+            models = importlib.import_module("qdrant_client.models")
+            # Qdrant local mode requires PointStruct objects (not plain dicts).
+            # The remote REST client accepts dicts; local mode does not — hence
+            # the previous AttributeError: 'dict' object has no attribute 'id'.
+            # UUID5 from point_id gives a stable, valid Qdrant point identifier.
+            qdrant_id = str(uuid.uuid5(_QDRANT_NS, point_id))
+            point = models.PointStruct(
+                id=qdrant_id,
+                vector=[float(v) for v in vector],
+                payload={**(payload or {}), "_point_key": point_id},
             )
+            with self._lock:
+                self._ensure_qdrant_collection(collection, len(vector))
+                self.client.upsert(collection_name=collection, points=[point])
             return
 
         self.collections.setdefault(collection, {})[point_id] = {
@@ -139,28 +153,21 @@ class QdrantVectorStore:
 
     def search(self, *, collection: str, vector: list[float], limit: int = 3) -> list[Dict[str, Any]]:
         if self.client is not None:
-            results = self.client.search(collection_name=collection, query_vector=vector, limit=limit)
-            normalized = []
-            for item in results:
-                normalized.append(
-                    {
-                        "id": item.id,
-                        "score": float(item.score),
-                        "payload": dict(item.payload or {}),
-                    }
-                )
-            return normalized
+            with self._lock:
+                results = self.client.search(collection_name=collection, query_vector=vector, limit=limit)
+            return [
+                {
+                    "id": item.payload.get("_point_key", str(item.id)),
+                    "score": float(item.score),
+                    "payload": dict(item.payload or {}),
+                }
+                for item in results
+            ]
 
         scores = []
-        for point_id, item in self.collections.get(collection, {}).items():
+        for pid, item in self.collections.get(collection, {}).items():
             score = self._cosine_similarity(vector, item["vector"])
-            scores.append(
-                {
-                    "id": point_id,
-                    "score": score,
-                    "payload": dict(item.get("payload") or {}),
-                }
-            )
+            scores.append({"id": pid, "score": score, "payload": dict(item.get("payload") or {})})
         scores.sort(key=lambda item: item["score"], reverse=True)
         return scores[:limit]
 

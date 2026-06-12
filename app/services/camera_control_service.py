@@ -355,28 +355,33 @@ class CameraControlService:
 
     def _normalize_auto_value(self, key: str, raw_value: float) -> bool:
         if key == "exposure":
-            # V4L2 commonly reports 0.25 (manual) and 0.75 (auto).
+            # OpenCV may return either the raw V4L2 integer (1=manual, 3=auto)
+            # or a normalized value (0.25=manual, 0.75=auto).
+            # raw V4L2: 1 = manual (not auto), 3 = aperture priority (auto)
+            if raw_value == 1.0:
+                return False
+            if raw_value >= 2.0:
+                return True
+            # OpenCV normalized: < 0.5 = manual, >= 0.5 = auto
             return bool(raw_value >= 0.5)
         return bool(raw_value >= 0.5)
 
     def _encode_auto_value(self, key: str, enabled: bool, backend: str = "opencv") -> float:
         if key == "exposure":
             if backend == "v4l2":
-                return 0.75 if enabled else 0.25
-            # CAP_PROP_AUTO_EXPOSURE is backend-specific; 1.0/0.0 is a common fallback.
+                # Use raw V4L2 enum integers as primary: 1=manual, 3=aperture-priority auto.
+                # The V4L2 UVC driver expects these integers; sending 0.25/0.75 truncates
+                # to 0 (another auto mode) in some OpenCV builds, silently ignoring the call.
+                return 3.0 if enabled else 1.0
             return 1.0 if enabled else 0.0
         return 1.0 if enabled else 0.0
 
     def _get_auto_value_fallbacks(self, key: str, enabled: bool, backend: str = "opencv") -> list:
-        """
-        Get fallback values for auto properties when primary encoding fails.
-        Some camera drivers have quirky auto-property support.
-        """
         if key == "exposure":
             if enabled:
-                # Try common "auto" values when primary fails
-                return [1.0, 0.75, 3.0, 0.5]
+                # OpenCV-normalized auto, then try common integer values
+                return [0.75, 0.5]
             else:
-                # Try common "manual" values
-                return [0.0, 0.25, 0.1]
+                # OpenCV-normalized manual (OpenCV divides V4L2 value by 4: 1/4=0.25)
+                return [0.25, 0.0]
         return [1.0, 0.0]
