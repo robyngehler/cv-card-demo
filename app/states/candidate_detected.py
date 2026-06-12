@@ -196,6 +196,20 @@ class CandidateDetectedState:
                             if "MATCHED" in identity_status:
                                 is_returning_visitor = True
 
+                # Fall back to the name OCR just read this frame. A brand-new
+                # visitor is not persisted yet, so find_candidate() returns
+                # nothing — but the precheck already extracted the name, so we
+                # can still greet them by name.
+                if not candidate_name and precheck_result is not None:
+                    candidate_name = precheck_result.name
+
+                # Make the resolved name available to the questionnaire/tracking
+                # views, which read it from the live session (not persistence).
+                if candidate_name and questionnaire is not None:
+                    session = self.context.runtime.get("session", {})
+                    if session:
+                        session["candidate_name"] = candidate_name
+
                 self.context.runtime["substate"] = "START_OR_RESUME_SESSION"
                 if ui_service is not None:
                     message = f"Willkommen, {candidate_name}!" if candidate_name else ("Welcome back" if precheck_result and precheck_result.resolved else "New visitor")

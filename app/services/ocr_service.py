@@ -267,7 +267,20 @@ class RegexFieldExtractor:
 class HeuristicFieldExtractor:
     ROLE_KEYWORDS = (
         "engineer", "manager", "lead", "researcher", "professor",
-        "ceo", "cto", "director", "consultant",
+        "ceo", "cto", "cfo", "coo", "director", "consultant",
+        # business-card titles that are NOT names — common false positives
+        "officer", "chief", "head", "founder", "president", "owner",
+        "vice", "partner", "specialist", "coordinator", "scientist",
+        "architect", "analyst",
+    )
+
+    # Markers that indicate a company / address / contact line rather than a
+    # person's name. Used so all-caps person names (e.g. "ROBERT BRÜCKNER")
+    # are still accepted while company headers are skipped.
+    COMPANY_MARKERS = (
+        "gmbh", "inc", "ltd", "llc", "corp", "co.", "group", "invest",
+        "trade", "technologies", "solutions", "systems", "university",
+        "institute", "&", "straße", "strasse", "str.",
     )
 
     def extract(self, lines: List[str], deterministic_fields: Dict[str, Any]) -> Dict[str, Any]:
@@ -286,12 +299,18 @@ class HeuristicFieldExtractor:
         company = self._select_company(semantic_lines, role)
         name = None
         for line in semantic_lines:
+            low = line.lower()
             words = [w for w in re.split(r"\s+", line) if w]
             if (
                 len(words) in {2, 3}
                 and not any(c.isdigit() for c in line)
-                and not any(kw in line.lower() for kw in self.ROLE_KEYWORDS)
-                and not any(t.isupper() and len(t) > 3 for t in words)
+                and not any(kw in low for kw in self.ROLE_KEYWORDS)
+                and not any(m in low for m in self.COMPANY_MARKERS)
+                # skip contact lines that slipped past the regex extractor
+                and "@" not in line
+                and "www" not in low
+                and ".com" not in low
+                and "http" not in low
             ):
                 name = line
                 break

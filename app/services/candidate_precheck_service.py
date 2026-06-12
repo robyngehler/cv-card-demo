@@ -14,6 +14,11 @@ class CandidatePrecheckResult:
     confidence: float
     snapshot_id: str | None = None
     raw_text: str | None = None
+    # Name/company extracted by OCR during precheck. Surfaced so the UI can greet
+    # the visitor immediately — even a brand-new visitor whose name is not yet
+    # persisted (the temporary candidate is only written later, in SNAPSHOT).
+    name: str | None = None
+    company: str | None = None
     debug: dict = field(default_factory=dict)
 
 
@@ -101,6 +106,8 @@ class CandidatePrecheckService:
             confidence=float(metadata.get("metadata_confidence", 0.0) or 0.0),
             snapshot_id=preview.snapshot_id,
             raw_text=metadata.get("raw_text"),
+            name=(metadata.get("name") or {}).get("value"),
+            company=(metadata.get("company") or {}).get("value"),
             debug=decision.debug,
         )
 

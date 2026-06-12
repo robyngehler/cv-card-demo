@@ -47,6 +47,43 @@ Three independent issues addressed per `proposal_fix_paddle_segfautls.md`.
   `threading.Lock` (local mode is not thread-safe).
 - **Status:** DONE.
 
+### B2) Qdrant search — `AttributeError: 'QdrantClient' object has no attribute 'search'`
+
+- **Observed:** OCR succeeded (`SNAPSHOT_OCR status=OK`) but the processing
+  thread then died in `vector_service.search` → `client.search(...)`, so
+  identity resolution / name display / persistence never ran. This is why
+  "no recognition happened and no name was shown" despite OCR working.
+- **Cause:** qdrant-client 1.18 removed `.search()` (deprecated since 1.10) in
+  favour of `.query_points()`.
+- **Fix:** `search()` now calls `client.query_points(query=..., with_payload=True)`
+  and reads `response.points`; a missing/uncreated collection returns `[]`
+  instead of raising (no upserts yet ⇒ no matches).
+- **Verified:** upsert+search round-trip (score ≈ 1.0); `search` on a missing
+  collection returns `[]`; full `process_snapshot` on a real snapshot completes
+  with no exception.
+- **Status:** DONE.
+
+### D) Candidate name never shown in the UI
+
+- **Cause (two parts):** (1) the crash in B2 aborted the chain before
+  `upsert_candidate`. (2) Even without the crash, a **new** visitor's name could
+  not be displayed: the precheck runs OCR but `CandidatePrecheckResult` only
+  carried `candidate_id` (None for new visitors), so `find_candidate()` returned
+  nothing and `candidate_name` stayed `None`. Additionally the heuristic name
+  extractor rejected all-caps surnames (e.g. "ROBERT BRÜCKNER") and did not know
+  "officer/chief/founder/…" were titles — so it picked the role line as the name.
+- **Fix:** surface `name`/`company` from the precheck OCR into
+  `CandidatePrecheckResult`; in `CANDIDATE_DETECTED` use that as the
+  `candidate_name` fallback and write it into the live session so
+  `tracking.py` / questionnaire / `run_view.js` render it. Heuristic extractor:
+  added title keywords, allowed all-caps person names, and skip company/contact
+  lines via markers (gmbh/inc/&/straße/@/www/.com).
+- **Verified:** across the latest real crops the name is now picked correctly
+  ("Asha-Maria Sharma", "OR. ROBERT BRUCKNER" with role "Chief Technology
+  Officer"); end-to-end the resolved name persists and is displayable.
+- **Status:** DONE. Note: OCR text quality on poor crops is still the limiting
+  factor (garbled input → garbled name); the extraction logic itself is fixed.
+
 ### C) V4L2 exposure toggle ignored / auto stuck on
 
 - **Cause:** `CAP_PROP_AUTO_EXPOSURE` on V4L2 UVC cameras uses raw enum ints

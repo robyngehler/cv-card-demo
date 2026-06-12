@@ -153,15 +153,26 @@ class QdrantVectorStore:
 
     def search(self, *, collection: str, vector: list[float], limit: int = 3) -> list[Dict[str, Any]]:
         if self.client is not None:
-            with self._lock:
-                results = self.client.search(collection_name=collection, query_vector=vector, limit=limit)
+            # qdrant-client >= 1.10 removed .search(); use .query_points().
+            # If the collection was never created (no upserts yet) the call
+            # raises — treat that as "no matches" rather than killing the thread.
+            try:
+                with self._lock:
+                    response = self.client.query_points(
+                        collection_name=collection,
+                        query=vector,
+                        limit=limit,
+                        with_payload=True,
+                    )
+            except Exception:
+                return []
             return [
                 {
-                    "id": item.payload.get("_point_key", str(item.id)),
+                    "id": (item.payload or {}).get("_point_key", str(item.id)),
                     "score": float(item.score),
                     "payload": dict(item.payload or {}),
                 }
-                for item in results
+                for item in response.points
             ]
 
         scores = []
