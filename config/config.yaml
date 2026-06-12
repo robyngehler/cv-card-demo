@@ -29,9 +29,9 @@ workspace:
     mode: "manual_rect"
     source_frame: "live"
     rect_px:
-      x: 220
+      x: 100
       y: 220
-      width: 664
+      width: 880
       height: 423
     output_size_px:
       width: 540
@@ -43,9 +43,9 @@ workspace:
     mode: "manual_rect"
     source_frame: "live"
     rect_px:
-      x: 191
+      x: 100
       y: 200
-      width: 731
+      width: 880
       height: 493
     output_size_px:
       width: 540
@@ -166,6 +166,11 @@ tracking:
       score_ema_alpha: 0.35
 
 questionnaire:
+  # How long IDLE_NO_CARD must stay empty (no card detected) before the last
+  # visitor's session is cleared and the UI returns to the "place a card" ground
+  # state. Rides out brief tracking blips and holds the farewell panel for a
+  # moment after a snapshot.
+  session_reset_idle_s: 6.0
   questions:
     - id: "experience"
       label: "How was your experience?"

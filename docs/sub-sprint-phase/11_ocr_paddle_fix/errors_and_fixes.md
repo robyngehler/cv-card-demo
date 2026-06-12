@@ -116,3 +116,62 @@ adopted.**
   `opencv-python-headless` + `numpy<2` and, for GPU, `onnxruntime-gpu` for
   JetPack. Removed `rapidocr-onnxruntime` + the stray `opencv-python` from the
   venv; `requirements.txt` keeps `paddleocr`.
+
+## Session lifecycle: returning visitor restarted survey + name never cleared
+
+Two questionnaire-workflow bugs at the booth (2026-06-12).
+
+### Returning visitor restarted the survey instead of showing thanks
+- **Symptom:** a candidate who already completed the survey, on returning,
+  had their name re-extracted correctly but the survey started from question 1.
+- **Cause:** ordering in `app/states/candidate_detected.py`. The
+  returning-visitor check used `get_candidate_session_progress(candidate_id) is
+  None`, but `questionnaire.ensure_session(...)` ran *just before* it. For a
+  completed candidate (old session has `completed_at` set, not resumable),
+  `ensure_session` creates a **fresh ACTIVE session** in the DB. The check then
+  saw that fresh incomplete session → `is_returning_visitor` stayed `False`.
+- **Fix:** determine the returning-visitor status **before** any
+  `ensure_session` call. If known (`MATCHED_*`) with no incomplete session,
+  install a completed/`DONE` runtime session, publish the farewell
+  (`is_returning_visitor=True`), and go to `IDLE_NO_CARD` without starting a
+  survey. Only new/resuming visitors reach `ensure_session`.
+- **Status:** DONE.
+- **Known limitation:** snapshot post-processing (OCR/identity/`upsert_candidate`)
+  is async, so an *immediate* re-detect right after completing (card never
+  removed) can still race before the email/name hash is persisted. The booth
+  flow removes the card, so the later-return path is the one that matters.
+
+### Last visitor's name/panel stayed up; no return to ground state
+- **Symptom:** after the card was removed, the name and question/thanks panel
+  stayed; IDLE never went back to "Karte auflegen".
+- **Cause:** `runtime["session"]` was never cleared. run_view drives panels from
+  the session (`hasActiveSession`/`completed`), and `ui_service._questionnaire_payload`
+  returns `candidate_name` unconditionally.
+- **Fix:** `app/states/idle.py` now clears the session once the table has been
+  continuously empty for `questionnaire.session_reset_idle_s` (default 6 s),
+  tracked via `runtime["idle_no_card_since"]`. The grace period rides out brief
+  `TRACKING→IDLE→TRACKING` blips and keeps the farewell panel up briefly after a
+  snapshot, then resets to the ground state. Name stays visible the whole time a
+  card is recognized.
+- **Status:** DONE.
+
+### Returning visitor still not recognized — identity keyed on unstable company
+- **Symptom (follow-up):** even after the ordering fix, a returning visitor
+  (Benjamin Schobel) was not recognized; a new session spawned each time, though
+  the name was OCR'd cleanly on both visits.
+- **Cause:** identity key was `sha256(normalized_name | normalized_company)`.
+  The heuristic *company* field (`HeuristicFieldExtractor._select_company` picks
+  the longest non-role line) flips between OCR runs, so the compound hash changed
+  every scan — three different `cand_name_company_*` ids were created from one
+  card in a single session (see `SNAPSHOT_IDENTITY` log lines), and prechecks
+  returned `UNRESOLVED`.
+- **Fix:** `identity_service.resolve_candidate_id` now keys on the **name only**,
+  via a new `_normalize_identity_key` (NFKD diacritic strip + lowercase +
+  alphanumeric tokens). Company is no longer part of the identity hash. Status
+  labels (`*_NAME_COMPANY`) and the `name_company_hash` column are reused
+  unchanged to avoid schema churn.
+- **Status:** DONE.
+- **Note:** existing candidate rows were stored under the old name|company hash,
+  so they won't match the new name-only hash. The scheme self-heals: the first
+  scan after this change creates a fresh candidate, the next scan of the same
+  name matches it. No DB wipe required.

@@ -181,7 +181,86 @@ class CandidateDetectedState:
                 persistence = self.context.get_service("persistence", default=None)
                 candidate_name = None
                 is_returning_visitor = False
+                candidate = None
 
+                # Decide whether this is a returning visitor who already finished
+                # the questionnaire BEFORE touching the session. ensure_session()
+                # would create a fresh ACTIVE session for a completed candidate
+                # (their old session has completed_at set, so it is not resumable)
+                # and that fresh incomplete session would then mask the fact that
+                # they already voted — making every return restart the survey.
+                if persistence is not None and candidate_id is not None:
+                    candidate = persistence.find_candidate(candidate_id)
+                    if candidate is not None:
+                        candidate_name = candidate.get("name")
+                        incomplete_session = persistence.get_candidate_session_progress(candidate_id)
+                        # A known (MATCHED) candidate with no incomplete session
+                        # has already completed the questionnaire.
+                        if incomplete_session is None and "MATCHED" in (identity_status or ""):
+                            is_returning_visitor = True
+
+                # Fall back to the name OCR just read this frame. A brand-new
+                # visitor is not persisted yet, so find_candidate() returns
+                # nothing — but the precheck already extracted the name, so we
+                # can still greet them by name.
+                if not candidate_name and precheck_result is not None:
+                    candidate_name = precheck_result.name
+
+                if is_returning_visitor:
+                    # Do not start a new survey. Present a completed session so the
+                    # UI shows the farewell/thanks panel (driven by
+                    # session.completed). IDLE_NO_CARD clears this once the card is
+                    # removed for long enough.
+                    self.context.runtime["substate"] = "RETURNING_VISITOR_THANKS"
+                    self.context.runtime["session"] = {
+                        "session_id": candidate_id,
+                        "candidate_id": candidate_id,
+                        "candidate_name": candidate_name,
+                        "identity_status": identity_status,
+                        "card_identity_state": identity_status,
+                        "completed": True,
+                        "phase": "DONE",
+                    }
+                    questionnaire_runtime = self.context.runtime.setdefault("questionnaire", {})
+                    questionnaire_runtime["active"] = False
+                    questionnaire_runtime["pending_snapshot"] = False
+                    # The returning card stays on the table and keeps re-entering
+                    # this path; cancel any pending idle reset so the thanks panel
+                    # holds while the card is present.
+                    self.context.runtime.pop("idle_no_card_since", None)
+
+                    if ui_service is not None:
+                        message = (
+                            f"Mach's gut, {candidate_name}! Danke fürs Mitmachen!"
+                            if candidate_name
+                            else "Danke fürs Mitmachen!"
+                        )
+                        ui_service.publish_score(
+                            {
+                                "visible": True,
+                                "score": result.candidate.x_normalized,
+                                "rating": round(float(result.candidate.x_normalized or 0.0) * 10.0, 1),
+                                "x_normalized": result.candidate.x_normalized,
+                                "confidence": result.candidate.confidence,
+                                "candidates_count": result.candidates_count,
+                                "state": self.name,
+                                "fusion_state": "IDENTITY_PRECHECK",
+                                "source": "card_crop_ocr",
+                                "candidate_id": candidate_id,
+                                "candidate_name": candidate_name,
+                                "identity_status": identity_status,
+                                "message": message,
+                                "is_returning_visitor": True,
+                            }
+                        )
+                    if self.context.logger:
+                        self.context.logger.info(
+                            f"CANDIDATE_DETECTED: Known visitor {candidate_id} ({candidate_name}) "
+                            f"already completed survey, showing thanks and returning to IDLE_NO_CARD"
+                        )
+                    return "IDLE_NO_CARD"
+
+                # New or resuming visitor: start/resume the questionnaire session.
                 if questionnaire is not None:
                     session = questionnaire.ensure_session(
                         candidate_id=candidate_id,
@@ -192,26 +271,6 @@ class CandidateDetectedState:
                     session["card_identity_state"] = identity_status
                     session["identity_status"] = identity_status
 
-                # Check if candidate is known and has already completed survey
-                if persistence is not None and candidate_id is not None:
-                    candidate = persistence.find_candidate(candidate_id)
-                    if candidate is not None:
-                        candidate_name = candidate.get("name")
-                        # Check if this candidate has a completed session
-                        completed_session = persistence.sessions.get_candidate_session_progress(candidate_id)
-                        if completed_session is None:
-                            # No incomplete session = already completed (or first-time visitor)
-                            # We check by looking at the identity_status: if MATCHED, they're known
-                            if "MATCHED" in identity_status:
-                                is_returning_visitor = True
-
-                # Fall back to the name OCR just read this frame. A brand-new
-                # visitor is not persisted yet, so find_candidate() returns
-                # nothing — but the precheck already extracted the name, so we
-                # can still greet them by name.
-                if not candidate_name and precheck_result is not None:
-                    candidate_name = precheck_result.name
-
                 # Make the resolved name available to the questionnaire/tracking
                 # views, which read it from the live session (not persistence).
                 if candidate_name and questionnaire is not None:
@@ -221,10 +280,7 @@ class CandidateDetectedState:
 
                 self.context.runtime["substate"] = "START_OR_RESUME_SESSION"
                 if ui_service is not None:
-                    message = f"Willkommen, {candidate_name}!" if candidate_name else ("Welcome back" if precheck_result and precheck_result.resolved else "New visitor")
-                    if is_returning_visitor:
-                        message = f"Mach's gut, {candidate_name}! Danke fürs Mitmachen!" if candidate_name else "Danke fürs Mitmachen!"
-
+                    message = f"Willkommen, {candidate_name}!" if candidate_name else ("Willkommen zurück" if precheck_result and precheck_result.resolved else "New visitor")
                     ui_service.publish_score(
                         {
                             "visible": True,
@@ -240,18 +296,9 @@ class CandidateDetectedState:
                             "candidate_name": candidate_name,
                             "identity_status": identity_status,
                             "message": message,
-                            "is_returning_visitor": is_returning_visitor,
+                            "is_returning_visitor": False,
                         }
                     )
-
-                # If returning visitor who already voted, skip to idle with thank you message
-                if is_returning_visitor:
-                    if self.context.logger:
-                        self.context.logger.info(
-                            f"CANDIDATE_DETECTED: Known visitor {candidate_id} ({candidate_name}) detected, "
-                            f"skipping survey (already completed)"
-                        )
-                    return "IDLE_NO_CARD"
 
                 if self.context.logger:
                     self.context.logger.info(

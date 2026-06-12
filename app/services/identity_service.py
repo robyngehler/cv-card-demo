@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import hashlib
+import re
 import time
+import unicodedata
 import uuid
 from typing import Any, Dict, Optional
 
@@ -45,11 +47,18 @@ class CandidateIdentityResolver:
                 debug={"email_hash": email_hash},
             )
 
-        name = self._normalized_field_value(metadata, "name")
-        company = self._normalized_field_value(metadata, "company")
-        if name and company:
-            compound = f"{name}|{company}"
-            name_company_hash = self._hash_identifier(compound)
+        # Key on the NAME alone, not name+company. The heuristic company field is
+        # unstable across OCR runs (it picks the longest non-role line, which
+        # flips frame to frame), so a name|company hash produced a new candidate
+        # id on every scan and the same visitor was never recognized. The name is
+        # read reliably; normalizing it (drop diacritics/punctuation, collapse
+        # whitespace, lowercase) makes the hash stable across OCR jitter.
+        # NOTE: the hash is still stored/queried via the existing
+        # ``name_company_hash`` column and the *_NAME_COMPANY status labels to
+        # keep the persistence schema and downstream checks unchanged.
+        name_key = self._normalize_identity_key(self._normalized_field_value(metadata, "name"))
+        if name_key:
+            name_company_hash = self._hash_identifier(name_key)
             return IdentityDecision(
                 candidate_id=self._candidate_id_from_hash("cand_name_company", name_company_hash),
                 identity_status="DETERMINISTIC_NAME_COMPANY",
@@ -175,6 +184,21 @@ class CandidateIdentityResolver:
             return None
         normalized = str(field_value).strip().lower()
         return normalized or None
+
+    @staticmethod
+    def _normalize_identity_key(value: Optional[str]) -> Optional[str]:
+        """Collapse OCR jitter so the same person hashes to the same key.
+
+        Strips diacritics (``BRÜCKNER`` -> ``bruckner``), lowercases, and keeps
+        only alphanumeric tokens joined by single spaces. Returns ``None`` if no
+        usable characters remain.
+        """
+        if not value:
+            return None
+        decomposed = unicodedata.normalize("NFKD", value)
+        ascii_value = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+        tokens = re.findall(r"[a-z0-9]+", ascii_value.lower())
+        return " ".join(tokens) or None
 
     def _hash_identifier(self, value: str) -> str:
         return hashlib.sha256(value.encode("utf-8")).hexdigest()

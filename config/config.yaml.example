@@ -132,6 +132,9 @@ tracking:
       score_ema_alpha: 0.35
 
 questionnaire:
+  # Seconds IDLE_NO_CARD must stay empty before the last visitor's session is
+  # cleared and the UI returns to the "place a card" ground state.
+  session_reset_idle_s: 6.0
   questions:
     - id: "experience"
       label: "How was your experience?"

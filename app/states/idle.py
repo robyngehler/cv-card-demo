@@ -14,6 +14,15 @@ class IdleNoCardState:
         self.live_jpeg_quality = int(
             (context.config.get("server", {}) or {}).get("live_stream_jpeg_quality", 70)
         )
+        # How long IDLE_NO_CARD must persist (no card detected) before the last
+        # visitor's session is cleared and the UI returns to the true ground
+        # state ("place a card"). The grace period rides out brief
+        # TRACKING -> IDLE -> TRACKING blips and keeps the farewell/thanks panel
+        # visible for a moment right after a snapshot, instead of wiping it
+        # instantly.
+        self.session_reset_idle_s = float(
+            (context.config.get("questionnaire", {}) or {}).get("session_reset_idle_s", 6.0)
+        )
 
     def enter(self):
         self.context.runtime["current_state"] = self.name
@@ -107,7 +116,15 @@ class IdleNoCardState:
                                     "message": "Recognizing card...",
                                 }
                             )
+                        # A card is back on the table: cancel any pending
+                        # idle reset so the visitor's session is preserved.
+                        self.context.runtime.pop("idle_no_card_since", None)
                         return "CANDIDATE_DETECTED"
+
+                # No card visible this frame. If a previous visitor's session is
+                # still around and the table has now been clear long enough, wipe
+                # it so the UI drops back to the ground state.
+                self._maybe_reset_session(time.time())
 
                 if ui_service is not None:
                     ui_service.publish_score(
@@ -133,6 +150,47 @@ class IdleNoCardState:
                 return "RECOVERY"
 
             time.sleep(self.poll_interval)
+
+    def _maybe_reset_session(self, now: float) -> None:
+        """Clear the previous visitor's session after a clear interruption.
+
+        Only acts once the table has been continuously empty for
+        ``session_reset_idle_s``. Keeping the name/questionnaire visible while a
+        card is recognized is intentional; this only fires when the session was
+        clearly abandoned (card gone a while), not during brief blips or right
+        after a snapshot.
+        """
+        session = self.context.runtime.get("session") or {}
+        # Nothing to reset if there is no leftover session.
+        if not session.get("session_id"):
+            self.context.runtime.pop("idle_no_card_since", None)
+            return
+
+        started = self.context.runtime.get("idle_no_card_since")
+        if started is None:
+            self.context.runtime["idle_no_card_since"] = now
+            return
+
+        if (now - float(started)) < self.session_reset_idle_s:
+            return
+
+        # Grace period elapsed with the table empty: drop all last-visitor state.
+        self.context.runtime["session"] = {}
+        questionnaire_runtime = self.context.runtime.setdefault("questionnaire", {})
+        questionnaire_runtime["active"] = False
+        questionnaire_runtime["pending_snapshot"] = False
+        questionnaire_runtime["last_completed_question_id"] = None
+        self.context.runtime.setdefault("tracking", {})["countdown_visible"] = False
+        self.context.runtime["last_fusion_measurement"] = None
+        self.context.runtime["last_card_measurement"] = None
+        self.context.runtime["last_candidate"] = None
+        self.context.runtime.pop("idle_no_card_since", None)
+        if self.context.logger:
+            self.context.logger.info(
+                "IDLE_NO_CARD: session cleared after "
+                f"{self.session_reset_idle_s:.1f}s with no card "
+                f"(candidate_id={session.get('candidate_id')})"
+            )
 
     def exit(self):
         if self.context.logger:
