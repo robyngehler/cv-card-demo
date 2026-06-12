@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import logging
+import multiprocessing as mp
+import os
+import queue as stdlib_queue
 import re
 import threading
+import time
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("cv-card-demo")
 
 
 def _field(value: Optional[str], confidence: float, source: str) -> Dict[str, Any]:
@@ -13,58 +20,224 @@ def _field(value: Optional[str], confidence: float, source: str) -> Dict[str, An
     }
 
 
-class RapidOcrService:
-    """OCR backend using rapidocr-onnxruntime.
+# --- OCR worker subprocess (proposal Fix 3 + Fix 4) ------------------------
 
-    ONNX Runtime inference sessions are thread-safe, but we still guard the
-    engine with a lock because RapidOCR wraps three separate sessions (det,
-    cls, rec) behind a single Python object — concurrent calls would interleave
-    internal state.  A single lock is sufficient because OCR is called at most
-    once per card scan (event-driven, not per-frame).
+def _ocr_worker_main(request_q: Any, response_q: Any) -> None:
+    """Entry point for the dedicated OCR subprocess.
+
+    Paddle predictors are NOT thread-safe and their C++ runtime can segfault
+    on aarch64 (Cortex-A78) — especially when several native ML runtimes share
+    one process (Paddle/OpenCV/MediaPipe each bring their own OpenMP/BLAS).
+    Running OCR in a dedicated ``spawn`` subprocess isolates Paddle completely:
+    a crash only kills this worker; the parent restarts it with backoff.
+
+    GPU path: change device='cpu' to device='gpu:0' once paddlepaddle-gpu is
+    available for aarch64/JetPack. YOLO and Paddle can share the Jetson GPU —
+    the CUDA driver serializes device access across processes.
     """
+    # Fix 4 — thread pinning must be set BEFORE paddle/numpy import. Competing
+    # OpenMP/OpenBLAS/MKL runtimes on Cortex-A78 are a documented crash source.
+    os.environ.setdefault("OMP_NUM_THREADS", "2")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    # MKL-DNN assumes x86 ISA features → null-pointer crashes on ARM64.
+    os.environ.setdefault("FLAGS_use_mkldnn", "0")
+    os.environ.setdefault("FLAGS_call_stack_level", "2")
+
+    try:
+        from paddleocr import PaddleOCR
+
+        # Fix 4 — lightweight mobile det+rec models. Rectified card crops do not
+        # need the medium-tier defaults; mobile models cut init time and memory.
+        ocr = PaddleOCR(
+            lang="en",
+            device="cpu",
+            enable_mkldnn=False,
+            cpu_threads=2,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+            text_detection_model_name="PP-OCRv5_mobile_det",
+            text_recognition_model_name="en_PP-OCRv5_mobile_rec",
+        )
+        response_q.put({"type": "ready"})
+    except Exception as exc:
+        response_q.put({"type": "init_error", "error": str(exc)})
+        return
+
+    while True:
+        try:
+            req = request_q.get(timeout=10.0)
+        except stdlib_queue.Empty:
+            continue
+        if req.get("cmd") == "shutdown":
+            break
+        req_id = req["id"]
+        try:
+            results = ocr.ocr(req["image_path"])
+            # PaddleOCR 3.x returns OCRResult objects holding weak-method refs
+            # that cannot be pickled — extract plain strings before queuing.
+            lines: List[str] = []
+            for page in results or []:
+                if isinstance(page, dict) and "rec_texts" in page:
+                    for text, _ in zip(
+                        page.get("rec_texts") or [],
+                        page.get("rec_scores") or [],
+                    ):
+                        t = str(text).strip() if text else ""
+                        if t:
+                            lines.append(t)
+                else:
+                    for detection in page or []:
+                        if len(detection) >= 2:
+                            t = str(detection[1][0]).strip()
+                            if t:
+                                lines.append(t)
+            response_q.put({"id": req_id, "lines": lines, "error": None})
+        except Exception as exc:
+            response_q.put({"id": req_id, "lines": [], "error": str(exc)})
+
+
+class PaddleOcrService:
+    """Supervises the OCR subprocess with a bounded restart policy (Fix 3).
+
+    Lifecycle:
+      OCR request -> enqueue -> wait with per-job timeout
+        on timeout/crash -> restart worker with backoff (1s, 2s, 5s, ...)
+        after MAX_CRASHES within CRASH_WINDOW_S -> disable OCR temporarily;
+          the snapshot pipeline continues without OCR and re-tries after the
+          cooldown.
+    """
+
+    MAX_CRASHES = 4
+    CRASH_WINDOW_S = 120.0
+    DISABLE_COOLDOWN_S = 300.0
+    BACKOFF_STEPS = (1.0, 2.0, 5.0, 10.0)
+    JOB_TIMEOUT_S = 30.0
 
     def __init__(self, context):
         self.context = context
         self.status: Dict[str, Any] = {"status": "NOT_INITIALIZED"}
+        # Serialize subprocess requests — the worker is single-threaded, so a
+        # response always corresponds to the one pending request.
         self._lock = threading.Lock()
-        self._engine = None
-        self._load_backend()
+        self._worker: Optional[mp.Process] = None
+        self._request_q: Optional[Any] = None
+        self._response_q: Optional[Any] = None
+        self._req_counter = 0
+        # Crash bookkeeping for the temporary-disable policy.
+        self._crash_times: List[float] = []
+        self._disabled_until = 0.0
+        self._start_worker(init_timeout=120.0)
 
-    def _load_backend(self) -> None:
+    def _start_worker(self, init_timeout: float = 30.0) -> None:
+        if self._worker and self._worker.is_alive():
+            try:
+                self._worker.terminate()
+                self._worker.join(timeout=3)
+            except Exception:
+                pass
+
+        # spawn = fresh interpreter: no inherited CUDA context, no MediaPipe/
+        # TFLite state, no half-initialized OpenMP. Never fork for ML runtimes.
+        ctx = mp.get_context("spawn")
+        self._request_q = ctx.Queue()
+        self._response_q = ctx.Queue()
+        self._worker = ctx.Process(
+            target=_ocr_worker_main,
+            args=(self._request_q, self._response_q),
+            daemon=True,
+            name="ocr-worker",
+        )
+        self._worker.start()
         try:
-            from rapidocr_onnxruntime import RapidOCR  # type: ignore
-            self._engine = RapidOCR()
+            msg = self._response_q.get(timeout=init_timeout)
+        except stdlib_queue.Empty:
+            self.status = {"status": "UNAVAILABLE", "last_error": "worker init timeout"}
+            return
+        if msg.get("type") == "init_error":
+            self.status = {"status": "UNAVAILABLE", "last_error": msg.get("error", "init failed")}
+        else:
             self.status = {"status": "READY"}
-        except Exception as exc:
-            self._engine = None
-            self.status = {"status": "UNAVAILABLE", "last_error": str(exc)}
+
+    def _record_crash_and_maybe_disable(self) -> None:
+        """Track crashes in a sliding window; disable OCR if too frequent."""
+        now = time.monotonic()
+        self._crash_times = [t for t in self._crash_times if now - t < self.CRASH_WINDOW_S]
+        self._crash_times.append(now)
+        backoff = self.BACKOFF_STEPS[min(len(self._crash_times) - 1, len(self.BACKOFF_STEPS) - 1)]
+        if len(self._crash_times) >= self.MAX_CRASHES:
+            self._disabled_until = now + self.DISABLE_COOLDOWN_S
+            self.status = {"status": "DISABLED", "last_error": "too many OCR crashes"}
+            logger.warning(
+                "OCR disabled for %.0fs after %d crashes in %.0fs",
+                self.DISABLE_COOLDOWN_S, len(self._crash_times), self.CRASH_WINDOW_S,
+            )
+            return
+        logger.warning("OCR worker crashed (%d in window); restarting after %.0fs backoff",
+                       len(self._crash_times), backoff)
+        time.sleep(backoff)
+        self._start_worker(init_timeout=30.0)
 
     def extract_text(self, image_path: str) -> Dict[str, Any]:
-        if self._engine is None:
+        now = time.monotonic()
+        if self._disabled_until and now < self._disabled_until:
+            return {"status": "DISABLED", "raw_text": "", "lines": []}
+        if self._disabled_until and now >= self._disabled_until:
+            # Cooldown elapsed — clear the crash window and try a fresh worker.
+            self._disabled_until = 0.0
+            self._crash_times.clear()
+            with self._lock:
+                self._start_worker(init_timeout=30.0)
+
+        if self.status.get("status") != "READY":
             return {"status": self.status.get("status", "UNAVAILABLE"), "raw_text": "", "lines": []}
 
-        try:
-            with self._lock:
-                result, _elapse = self._engine(image_path)
-        except Exception as exc:
-            return {"status": "ERROR", "raw_text": "", "lines": [], "error": str(exc)}
+        with self._lock:
+            if not self._worker.is_alive():
+                self._record_crash_and_maybe_disable()
+                if self.status.get("status") != "READY":
+                    return {"status": self.status.get("status", "UNAVAILABLE"), "raw_text": "", "lines": []}
 
-        lines: List[str] = []
-        for detection in result or []:
-            if len(detection) >= 2:
-                text = str(detection[1]).strip()
-                if text:
-                    lines.append(text)
+            req_id = self._req_counter
+            self._req_counter += 1
+            self._request_q.put({"id": req_id, "image_path": image_path})
 
-        raw_text = "\n".join(lines)
-        return {"status": "OK", "raw_text": raw_text, "lines": lines}
+            # Poll with worker-alive check so a mid-inference segfault is noticed
+            # immediately instead of waiting the whole job timeout.
+            deadline = time.monotonic() + self.JOB_TIMEOUT_S
+            response = None
+            crashed = False
+            while time.monotonic() < deadline:
+                if not self._worker.is_alive():
+                    crashed = True
+                    break
+                try:
+                    response = self._response_q.get(timeout=1.0)
+                    break
+                except stdlib_queue.Empty:
+                    continue
+
+            if crashed or response is None:
+                self._record_crash_and_maybe_disable()
+                return {"status": "ERROR", "raw_text": "", "lines": [], "error": "worker crash or timeout"}
+
+        if response.get("error"):
+            return {"status": "ERROR", "raw_text": "", "lines": [], "error": response["error"]}
+        lines = response.get("lines") or []
+        return {"status": "OK", "raw_text": "\n".join(lines), "lines": lines}
 
     def get_status(self) -> Dict[str, Any]:
-        return {"status": self.status.get("status", "UNKNOWN"), "backend": "rapidocr"}
+        return {"status": self.status.get("status", "UNKNOWN"), "backend": "paddleocr"}
 
-
-# Keep alias so imports that reference PaddleOcrService still resolve.
-PaddleOcrService = RapidOcrService
+    def shutdown(self) -> None:
+        if self._worker and self._worker.is_alive():
+            try:
+                self._request_q.put({"cmd": "shutdown"})
+                self._worker.join(timeout=5)
+            finally:
+                if self._worker.is_alive():
+                    self._worker.terminate()
 
 
 class RegexFieldExtractor:
@@ -189,7 +362,7 @@ class BusinessCardMetadataPipeline:
 
     def __init__(self, context):
         self.context = context
-        self.ocr = RapidOcrService(context)
+        self.ocr = PaddleOcrService(context)
         self.regex = RegexFieldExtractor()
         self.heuristics = HeuristicFieldExtractor()
         self.parser = StructuredFieldParser(context)
@@ -223,7 +396,7 @@ class BusinessCardMetadataPipeline:
         return self.ocr.get_status()
 
     def shutdown(self) -> None:
-        pass  # no subprocess to clean up
+        self.ocr.shutdown()
 
 
 LlmBusinessCardParser = StructuredFieldParser

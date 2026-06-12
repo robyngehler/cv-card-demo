@@ -4,6 +4,6 @@ PyYAML>=6.0
 numpy>=1.26.0
 opencv-python-headless>=4.8.0.74
 ultralytics>=8.0.0
-rapidocr-onnxruntime>=1.4.0
+paddleocr>=2.7.0
 qdrant-client>=2.0.0
 mediapipe>=0.10.0
