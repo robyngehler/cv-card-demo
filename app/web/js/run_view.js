@@ -181,6 +181,20 @@ export function initRunView(store) {
         (i < questionIndex ? " done" : i === questionIndex ? " active" : "");
     });
 
+    // Persistent greeting inside the question panel: the visitor's name stays
+    // visible for the whole session (every question), not just the brief
+    // greeting panel, until the farewell/thanks panel takes over.
+    const qGreeting = document.getElementById("run-q-greeting");
+    const qName = document.getElementById("run-q-name");
+    if (qGreeting && qName) {
+      if (sessionName) {
+        qName.textContent = sessionName;
+        qGreeting.style.display = "";
+      } else {
+        qGreeting.style.display = "none";
+      }
+    }
+
     // Greet / thanks names
     const greetName = document.getElementById("run-greet-name");
     if (greetName) greetName.textContent = sessionName || "—";

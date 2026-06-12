@@ -599,6 +599,15 @@ h3 {
   font-weight: 400;
 }
 
+/* Persistent visitor greeting shown above every question for the whole session. */
+.run-q-greeting {
+  font-family: var(--skr-head);
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--skr-ink);
+  margin-bottom: 10px;
+}
+
 .run-hero {
   font-family: var(--skr-head);
   font-size: clamp(26px, 2.6vw, 42px);
@@ -837,12 +846,12 @@ h3 {
   font-family: var(--skr-head);
   font-weight: 500;
   font-size: 36px;
-  color: #235e66;
+  color: #fff;
   line-height: 1;
-  text-shadow: 0 1px 2px rgba(255,255,255,.4);
+  text-shadow: 0 1px 3px rgba(0,0,0,.6);
 }
 
-.run-section.active .run-section-num { color: #0a5560; }
+.run-section.active .run-section-num { color: #fff; }
 
 .run-section-stars {
   display: flex;
@@ -850,9 +859,10 @@ h3 {
   margin-top: 9px;
 }
 
-.run-section-stars svg { width: 18px; height: 18px; display: block; }
-.run-section-stars path { fill: rgba(31,150,163,.55); stroke: none; }
-.run-section.active .run-section-stars path { fill: var(--skr-blue-deep); }
+.run-section-stars svg { width: 18px; height: 18px; display: block;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.run-section-stars path { fill: rgba(255,255,255,.7); stroke: none; }
+.run-section.active .run-section-stars path { fill: #fff; }
 
 .run-section-ring {
   position: absolute;

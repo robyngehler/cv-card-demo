@@ -25,6 +25,11 @@ class ConfigDrivenQuestionnaireRuntime:
     def __init__(self, context):
         self.context = context
         self.questions = self._load_questions()
+        # Brief "Hallo <name>" greeting hold at the start of a new session,
+        # before scoring begins. 0 disables it.
+        self.greeting_duration_s = float(
+            context.config.get("questionnaire", {}).get("greeting_duration_s", 4.0)
+        )
         self.status: Dict[str, Any] = {
             "status": "READY" if self.questions else "EMPTY",
             "question_count": len(self.questions),
@@ -136,6 +141,19 @@ class ConfigDrivenQuestionnaireRuntime:
         question = self.current_question()
         if question is None or not session.get("session_id") or fusion_measurement.score is None:
             return self._ui_context(question=None, countdown_remaining_s=None)
+
+        # Greeting hold: on the first question of a fresh session, show the
+        # "Hallo <name>" panel for greeting_duration_s before scoring starts.
+        if (
+            self.greeting_duration_s > 0.0
+            and int(session.get("question_index", 0) or 0) == 0
+            and not session.get("greeting_done")
+        ):
+            started = session.get("started_at_monotonic")
+            if started is not None and (timestamp - float(started)) < self.greeting_duration_s:
+                session["phase"] = "GREETING"
+                return self._ui_context(question=question, countdown_remaining_s=None)
+            session["greeting_done"] = True
 
         score = float(fusion_measurement.score)
         session["current_score"] = score
@@ -327,6 +345,8 @@ class ConfigDrivenQuestionnaireRuntime:
 
     @staticmethod
     def _phase_message(phase: str) -> str:
+        if phase == "GREETING":
+            return "Welcome!"
         if phase == "WAIT_FOR_MOVEMENT":
             return "Move the business card to set your rating."
         if phase == "ACTIVE_SCORING":

@@ -41,6 +41,7 @@ class UIService:
                 "session": {
                     "session_id": session.get("session_id"),
                     "candidate_id": session.get("candidate_id"),
+                    "candidate_name": session.get("candidate_name"),
                     "identity_status": session.get("identity_status"),
                     "current_question_id": session.get("current_question_id"),
                     "phase": snapshot.get("questionnaire", {}).get("phase"),
@@ -301,6 +302,7 @@ class UIService:
             "session": {
                 "session_id": session.get("session_id"),
                 "candidate_id": session.get("candidate_id"),
+                "candidate_name": session.get("candidate_name"),
                 "identity_status": session.get("identity_status"),
                 "question_index": session.get("question_index", 0),
                 "question_count": self._question_count(),
@@ -394,6 +396,9 @@ class UIService:
             "countdown_remaining_s": countdown_remaining_s,
             "snapshot_pending": bool(self.context.runtime.get("questionnaire", {}).get("pending_snapshot", False)),
             "message": self._phase_message(phase),
+            # run_view.js reads the greeting/farewell name from here first.
+            "candidate_name": session.get("candidate_name"),
+            "identity_status": session.get("identity_status"),
         }
 
     def _phase_message(self, phase):

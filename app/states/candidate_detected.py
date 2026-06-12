@@ -165,6 +165,15 @@ class CandidateDetectedState:
                         identity_status = precheck_result.identity_status
                     else:
                         identity_status = "TEMPORARY_PRECHECK_UNRESOLVED"
+                    if self.context.logger:
+                        self.context.logger.info(
+                            "CANDIDATE_PRECHECK_RESULT "
+                            f"resolved={precheck_result.resolved} "
+                            f"status={precheck_result.identity_status} "
+                            f"matched_on={precheck_result.matched_on} "
+                            f"name={precheck_result.name!r} "
+                            f"raw_text_len={len(precheck_result.raw_text or '')}"
+                        )
 
                 if candidate_id is None and identity is not None:
                     candidate_id = identity.create_temporary_candidate_id()

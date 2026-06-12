@@ -388,24 +388,10 @@ class TrackingState:
                 )
                 cv2.circle(overlay, (int(proxy_x), int(proxy_y)), 8, (255, 255, 255), 2)
 
-        cv2.putText(
-            overlay,
-            f"state={fusion_measurement.fusion_state} source={fusion_measurement.source}",
-            (20, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 255),
-            2,
-        )
-        cv2.putText(
-            overlay,
-            f"score={fusion_measurement.score if fusion_measurement.score is not None else 'None'} rating={fusion_measurement.rating if fusion_measurement.rating is not None else 'None'}",
-            (20, 56),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (255, 255, 255),
-            1,
-        )
+        # Debug text overlay (fusion state / source / score / rating) is
+        # intentionally NOT drawn: the run-view frame is shown to booth visitors,
+        # so it must stay clean. Keep only the visual overlays (workspace boxes,
+        # card contour, hand keypoints) above.
 
         success, encoded = cv2.imencode(
             ".jpg",
