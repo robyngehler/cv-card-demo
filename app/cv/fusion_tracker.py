@@ -292,6 +292,22 @@ class CardHandFusionTracker:
         return self._enter_lost_hold(timestamp)
 
     def _handle_lost_hold(self, card_measurement, hand_measurement, card_valid, hand_valid, timestamp: float) -> FusionMeasurement:
+        # Timeout check first: lost_hold must eventually expire even if hand or
+        # card flicker back. This prevents hand movement from indefinitely
+        # extending the hold after a card is removed.
+        if self.lost_hold_started_at is not None and (timestamp - self.lost_hold_started_at) > self.lost_hold_max_duration_s:
+            self.fusion_state = "NO_TARGET"
+            self.displayed_score = None
+            self.lost_hold_anchor_score = None
+            return self._emit(
+                visible=False,
+                score=None,
+                fusion_state="NO_TARGET",
+                source="lost",
+                confidence=0.0,
+                timestamp=timestamp,
+            )
+
         anchor_score = self.lost_hold_anchor_score if self.lost_hold_anchor_score is not None else self.displayed_score
         if anchor_score is None:
             self.fusion_state = "NO_TARGET"
@@ -369,19 +385,8 @@ class CardHandFusionTracker:
                 debug={"anchor_score": anchor_score, "delta": delta},
             )
 
-        if self.lost_hold_started_at is not None and (timestamp - self.lost_hold_started_at) > self.lost_hold_max_duration_s:
-            self.fusion_state = "NO_TARGET"
-            self.displayed_score = None
-            self.lost_hold_anchor_score = None
-            return self._emit(
-                visible=False,
-                score=None,
-                fusion_state="NO_TARGET",
-                source="lost",
-                confidence=0.0,
-                timestamp=timestamp,
-            )
-
+        # If neither card nor hand is valid, just hold the last score.
+        # (Timeout was already checked at the start of this method.)
         self.fusion_state = "LOST_HOLD"
         return self._emit(
             visible=True,

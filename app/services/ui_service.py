@@ -41,8 +41,14 @@ class UIService:
                 "session": {
                     "session_id": session.get("session_id"),
                     "candidate_id": session.get("candidate_id"),
-                    # Only show candidate_name if session is active (has ID and not completed).
-                    "candidate_name": session.get("candidate_name") if session.get("session_id") and not session.get("completed") else None,
+                    # Only show candidate_name while actively tracking (app_state is TRACKING or SNAPSHOT).
+                    "candidate_name": (
+                        session.get("candidate_name")
+                        if snapshot.get("app", {}).get("state") in ("TRACKING", "SNAPSHOT")
+                        and session.get("session_id")
+                        and not session.get("completed")
+                        else None
+                    ),
                     "identity_status": session.get("identity_status"),
                     "current_question_id": session.get("current_question_id"),
                     "phase": snapshot.get("questionnaire", {}).get("phase"),
@@ -303,8 +309,15 @@ class UIService:
             "session": {
                 "session_id": session.get("session_id"),
                 "candidate_id": session.get("candidate_id"),
-                # Only show candidate_name if session is active (has ID and not completed).
-                "candidate_name": session.get("candidate_name") if session.get("session_id") and not session.get("completed") else None,
+                # Only show candidate_name while actively tracking (app_state is TRACKING or SNAPSHOT).
+                # Once back at IDLE_NO_CARD, hide the name even if session object still has it.
+                "candidate_name": (
+                    session.get("candidate_name")
+                    if runtime.get("current_state") in ("TRACKING", "SNAPSHOT")
+                    and session.get("session_id")
+                    and not session.get("completed")
+                    else None
+                ),
                 "identity_status": session.get("identity_status"),
                 "question_index": session.get("question_index", 0),
                 "question_count": self._question_count(),
